@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ruff
+.ruff_cache/
+
+# Neo4j data
+neo4j_data/
+
+# Tree-sitter compiled grammars
+grammars/
+
+# rlm internal docs (not part of archgraph)
+rlm-perspectives.md
+rlm_insights.md
+tools.md
+
+# Accidental pip output
+=18.1.0

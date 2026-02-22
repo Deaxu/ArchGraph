@@ -1,0 +1,844 @@
+"""Tree-sitter based multi-language source code extractor."""
+
+from __future__ import annotations
+
+import hashlib
+import importlib
+import logging
+from pathlib import Path
+from typing import Any
+
+import tree_sitter as ts
+
+from archgraph.config import EXTENSION_MAP, LANGUAGE_MODULES, SKIP_DIRS, SKIP_FILES
+from archgraph.extractors.base import BaseExtractor
+from archgraph.graph.schema import GraphData, NodeLabel, EdgeType
+
+logger = logging.getLogger(__name__)
+
+
+# ── Per-language AST query definitions ──────────────────────────────────────
+# Each language maps node types to extractor logic. We use tree-sitter node
+# kind names which differ across grammars.
+
+# Maps language -> dict of AST node types used for each concept
+_LANG_NODE_TYPES: dict[str, dict[str, list[str]]] = {
+    "c": {
+        "function_def": ["function_definition"],
+        "function_decl": ["declaration"],
+        "struct": ["struct_specifier"],
+        "enum": ["enum_specifier"],
+        "typedef": ["type_definition"],
+        "macro": ["preproc_def", "preproc_function_def"],
+        "include": ["preproc_include"],
+        "call": ["call_expression"],
+        "field_decl": ["field_declaration"],
+    },
+    "cpp": {
+        "function_def": ["function_definition"],
+        "class": ["class_specifier"],
+        "struct": ["struct_specifier"],
+        "enum": ["enum_specifier"],
+        "typedef": ["type_definition"],
+        "macro": ["preproc_def", "preproc_function_def"],
+        "include": ["preproc_include"],
+        "call": ["call_expression"],
+        "field_decl": ["field_declaration"],
+        "namespace": ["namespace_definition"],
+        "template": ["template_declaration"],
+    },
+    "rust": {
+        "function_def": ["function_item"],
+        "struct": ["struct_item"],
+        "enum": ["enum_item"],
+        "trait": ["trait_item"],
+        "impl": ["impl_item"],
+        "type_alias": ["type_item"],
+        "macro": ["macro_definition"],
+        "use": ["use_declaration"],
+        "call": ["call_expression"],
+        "field_decl": ["field_declaration"],
+        "mod": ["mod_item"],
+    },
+    "java": {
+        "function_def": ["method_declaration", "constructor_declaration"],
+        "class": ["class_declaration"],
+        "interface": ["interface_declaration"],
+        "enum": ["enum_declaration"],
+        "import": ["import_declaration"],
+        "call": ["method_invocation"],
+        "field_decl": ["field_declaration"],
+    },
+    "kotlin": {
+        "function_def": ["function_declaration"],
+        "class": ["class_declaration"],
+        "interface": ["interface_declaration"],  # not always present
+        "enum": ["enum_class_body"],
+        "import": ["import_header"],
+        "call": ["call_expression"],
+    },
+    "go": {
+        "function_def": ["function_declaration", "method_declaration"],
+        "struct": ["type_declaration"],
+        "interface": ["type_declaration"],
+        "import": ["import_declaration"],
+        "call": ["call_expression"],
+        "field_decl": ["field_declaration"],
+    },
+    "javascript": {
+        "function_def": [
+            "function_declaration",
+            "method_definition",
+            "arrow_function",
+        ],
+        "class": ["class_declaration"],
+        "import": ["import_statement"],
+        "call": ["call_expression"],
+    },
+    "typescript": {
+        "function_def": [
+            "function_declaration",
+            "method_definition",
+            "arrow_function",
+        ],
+        "class": ["class_declaration"],
+        "interface": ["interface_declaration"],
+        "type_alias": ["type_alias_declaration"],
+        "enum": ["enum_declaration"],
+        "import": ["import_statement"],
+        "call": ["call_expression"],
+    },
+    "swift": {
+        "function_def": ["function_declaration"],
+        "class": ["class_declaration"],
+        "struct": ["struct_declaration"],
+        "enum": ["enum_declaration"],
+        "protocol": ["protocol_declaration"],
+        "import": ["import_declaration"],
+        "call": ["call_expression"],
+    },
+    "objc": {
+        "function_def": ["function_definition", "method_definition"],
+        "class": ["class_interface", "class_implementation"],
+        "import": ["preproc_import"],
+        "call": ["message_expression"],
+    },
+}
+
+
+def _file_hash(path: Path) -> str:
+    """Compute SHA-256 of file contents."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _node_text(node: ts.Node, source: bytes) -> str:
+    """Get the text of a tree-sitter node."""
+    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+
+def _find_child_by_type(node: ts.Node, *types: str) -> ts.Node | None:
+    """Find the first child of node matching one of the given types."""
+    for child in node.children:
+        if child.type in types:
+            return child
+    return None
+
+
+def _find_child_by_field(node: ts.Node, field_name: str) -> ts.Node | None:
+    """Find a child by field name."""
+    return node.child_by_field_name(field_name)
+
+
+class TreeSitterExtractor(BaseExtractor):
+    """Extracts code structure using tree-sitter grammars."""
+
+    def __init__(self, languages: list[str] | None = None) -> None:
+        self._languages = languages or ["c", "cpp", "rust", "java", "go"]
+        self._parsers: dict[str, ts.Parser] = {}
+        self._ts_languages: dict[str, ts.Language] = {}
+        self._init_parsers()
+
+    def _init_parsers(self) -> None:
+        """Initialize tree-sitter parsers for each requested language."""
+        for lang in self._languages:
+            module_name = LANGUAGE_MODULES.get(lang)
+            if not module_name:
+                logger.warning("No tree-sitter module for language: %s", lang)
+                continue
+            try:
+                mod = importlib.import_module(module_name)
+                # tree-sitter 0.24+ API: language() returns a Language capsule
+                ts_lang = ts.Language(mod.language())
+                parser = ts.Parser(ts_lang)
+                self._parsers[lang] = parser
+                self._ts_languages[lang] = ts_lang
+                logger.debug("Initialized parser for %s", lang)
+            except (ImportError, Exception) as e:
+                logger.warning("Could not load tree-sitter grammar for %s: %s", lang, e)
+
+    def extract(self, repo_path: Path, **kwargs: object) -> GraphData:
+        """Extract graph from all supported source files in the repo."""
+        graph = GraphData()
+        files = self._collect_files(repo_path)
+        logger.info("Found %d source files to parse", len(files))
+
+        for file_path in files:
+            lang = self._detect_language(file_path)
+            if lang not in self._parsers:
+                continue
+            try:
+                self._extract_file(file_path, lang, repo_path, graph)
+            except Exception:
+                logger.exception("Error extracting %s", file_path)
+
+        return graph
+
+    def _collect_files(self, repo_path: Path) -> list[Path]:
+        """Collect all source files, respecting skip lists."""
+        files: list[Path] = []
+        for path in repo_path.rglob("*"):
+            if not path.is_file():
+                continue
+            if any(skip in path.parts for skip in SKIP_DIRS):
+                continue
+            if path.name in SKIP_FILES:
+                continue
+            if path.suffix in EXTENSION_MAP:
+                files.append(path)
+        return sorted(files)
+
+    def _detect_language(self, path: Path) -> str:
+        """Detect language from file extension."""
+        return EXTENSION_MAP.get(path.suffix, "")
+
+    def _extract_file(
+        self,
+        file_path: Path,
+        lang: str,
+        repo_path: Path,
+        graph: GraphData,
+    ) -> None:
+        """Parse a single file and add its nodes/edges to the graph."""
+        source = file_path.read_bytes()
+        rel_path = str(file_path.relative_to(repo_path))
+
+        # Parse
+        parser = self._parsers[lang]
+        tree = parser.parse(source)
+        root = tree.root_node
+
+        # File node
+        lines = source.count(b"\n") + 1
+        file_id = f"file:{rel_path}"
+        graph.add_node(
+            file_id,
+            NodeLabel.FILE,
+            path=rel_path,
+            language=lang,
+            size=len(source),
+            hash=_file_hash(file_path),
+            lines=lines,
+        )
+
+        # Extract based on language node types
+        lang_types = _LANG_NODE_TYPES.get(lang, {})
+        self._walk_tree(root, source, lang, lang_types, file_id, rel_path, graph)
+
+    def _walk_tree(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        lang_types: dict[str, list[str]],
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+        parent_id: str | None = None,
+    ) -> None:
+        """Recursively walk the AST and extract nodes and edges."""
+        node_type = node.type
+
+        # --- Functions ---
+        if node_type in lang_types.get("function_def", []):
+            func_id = self._extract_function(node, source, lang, file_id, rel_path, graph)
+            container = parent_id or file_id
+            graph.add_edge(container, func_id, EdgeType.CONTAINS)
+            # Recurse into function body for calls
+            self._extract_calls_from(node, source, lang, lang_types, func_id, rel_path, graph)
+            return  # Don't recurse further for children — calls handled above
+
+        # --- Classes ---
+        if node_type in lang_types.get("class", []):
+            cls_id = self._extract_class(node, source, lang, file_id, rel_path, graph)
+            graph.add_edge(file_id, cls_id, EdgeType.CONTAINS)
+            # Recurse into class body
+            for child in node.children:
+                self._walk_tree(
+                    child, source, lang, lang_types, file_id, rel_path, graph, parent_id=cls_id
+                )
+            return
+
+        # --- Structs ---
+        if node_type in lang_types.get("struct", []):
+            struct_id = self._extract_struct(node, source, lang, file_id, rel_path, graph)
+            graph.add_edge(file_id, struct_id, EdgeType.CONTAINS)
+            # Extract fields
+            self._extract_fields(node, source, struct_id, graph)
+            return
+
+        # --- Enums ---
+        if node_type in lang_types.get("enum", []):
+            self._extract_enum(node, source, lang, file_id, rel_path, graph)
+            return
+
+        # --- Interfaces / Traits / Protocols ---
+        for key in ("interface", "trait", "protocol"):
+            if node_type in lang_types.get(key, []):
+                self._extract_interface(node, source, lang, file_id, rel_path, graph)
+                return
+
+        # --- Type aliases ---
+        if node_type in lang_types.get("type_alias", []) or node_type in lang_types.get(
+            "typedef", []
+        ):
+            self._extract_type_alias(node, source, lang, file_id, rel_path, graph)
+            return
+
+        # --- Macros ---
+        if node_type in lang_types.get("macro", []):
+            self._extract_macro(node, source, lang, file_id, rel_path, graph)
+            return
+
+        # --- Imports / Includes ---
+        for key in ("include", "import", "use"):
+            if node_type in lang_types.get(key, []):
+                self._extract_import(node, source, file_id, rel_path, graph)
+                return
+
+        # --- Impl blocks (Rust) ---
+        if node_type in lang_types.get("impl", []):
+            self._extract_impl(node, source, lang, lang_types, file_id, rel_path, graph)
+            return
+
+        # Recurse
+        for child in node.children:
+            self._walk_tree(child, source, lang, lang_types, file_id, rel_path, graph, parent_id)
+
+    # ── Node extractors ─────────────────────────────────────────────────────
+
+    def _extract_function(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> str:
+        """Extract a function/method node. Returns its node ID."""
+        name = self._get_function_name(node, source, lang)
+        func_id = f"func:{rel_path}:{name}:{node.start_point[0]}"
+
+        # Try to extract parameters
+        params = self._get_function_params(node, source, lang)
+        return_type = self._get_function_return_type(node, source, lang)
+
+        # Visibility / export check
+        text = _node_text(node, source)
+        is_exported = self._is_exported(text, lang)
+
+        graph.add_node(
+            func_id,
+            NodeLabel.FUNCTION,
+            name=name,
+            file=rel_path,
+            line_start=node.start_point[0] + 1,
+            line_end=node.end_point[0] + 1,
+            params=params,
+            return_type=return_type,
+            is_exported=is_exported,
+        )
+
+        # Extract parameters as nodes
+        self._extract_parameters(node, source, lang, func_id, graph)
+
+        return func_id
+
+    def _extract_class(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> str:
+        """Extract a class node. Returns its node ID."""
+        name = self._get_name(node, source, lang)
+        cls_id = f"class:{rel_path}:{name}"
+
+        text = _node_text(node, source)
+        is_abstract = "abstract" in text.split("{")[0] if "{" in text else "abstract" in text
+
+        graph.add_node(
+            cls_id,
+            NodeLabel.CLASS,
+            name=name,
+            file=rel_path,
+            line_start=node.start_point[0] + 1,
+            line_end=node.end_point[0] + 1,
+            is_abstract=is_abstract,
+        )
+
+        # Extract inheritance
+        self._extract_inheritance(node, source, lang, cls_id, rel_path, graph)
+
+        return cls_id
+
+    def _extract_struct(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> str:
+        """Extract a struct node."""
+        name = self._get_name(node, source, lang)
+        struct_id = f"struct:{rel_path}:{name}"
+
+        graph.add_node(
+            struct_id,
+            NodeLabel.STRUCT,
+            name=name,
+            file=rel_path,
+            line_start=node.start_point[0] + 1,
+        )
+        return struct_id
+
+    def _extract_enum(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> str:
+        name = self._get_name(node, source, lang)
+        enum_id = f"enum:{rel_path}:{name}"
+        graph.add_node(
+            enum_id,
+            NodeLabel.ENUM,
+            name=name,
+            file=rel_path,
+        )
+        graph.add_edge(file_id, enum_id, EdgeType.CONTAINS)
+        return enum_id
+
+    def _extract_interface(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> str:
+        name = self._get_name(node, source, lang)
+        iface_id = f"interface:{rel_path}:{name}"
+        graph.add_node(
+            iface_id,
+            NodeLabel.INTERFACE,
+            name=name,
+            file=rel_path,
+        )
+        graph.add_edge(file_id, iface_id, EdgeType.CONTAINS)
+        return iface_id
+
+    def _extract_type_alias(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> str:
+        name = self._get_name(node, source, lang)
+        alias_id = f"typealias:{rel_path}:{name}"
+        graph.add_node(
+            alias_id,
+            NodeLabel.TYPE_ALIAS,
+            name=name,
+            file=rel_path,
+        )
+        graph.add_edge(file_id, alias_id, EdgeType.CONTAINS)
+        return alias_id
+
+    def _extract_macro(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> str:
+        name = self._get_macro_name(node, source)
+        macro_id = f"macro:{rel_path}:{name}"
+        body = _node_text(node, source)
+        graph.add_node(
+            macro_id,
+            NodeLabel.MACRO,
+            name=name,
+            file=rel_path,
+            body=body[:500],  # Truncate long macros
+        )
+        graph.add_edge(file_id, macro_id, EdgeType.CONTAINS)
+        return macro_id
+
+    def _extract_import(
+        self,
+        node: ts.Node,
+        source: bytes,
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> None:
+        """Extract an import/include edge."""
+        text = _node_text(node, source).strip()
+        # Store as a property on the IMPORTS edge — we resolve targets later
+        import_target = self._parse_import_target(text)
+        if import_target:
+            target_id = f"module:{import_target}"
+            # Create a module node (may be deduped later)
+            graph.add_node(target_id, NodeLabel.MODULE, name=import_target)
+            graph.add_edge(file_id, target_id, EdgeType.IMPORTS, raw=text)
+
+    def _extract_impl(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        lang_types: dict[str, list[str]],
+        file_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> None:
+        """Extract a Rust impl block — link methods to the type."""
+        # Get the type name from the impl
+        type_node = _find_child_by_field(node, "type")
+        type_name = _node_text(type_node, source) if type_node else "unknown"
+        type_id = f"struct:{rel_path}:{type_name}"
+
+        # Check for trait impl
+        trait_node = _find_child_by_field(node, "trait")
+        if trait_node:
+            trait_name = _node_text(trait_node, source)
+            trait_id = f"interface:{rel_path}:{trait_name}"
+            graph.add_node(trait_id, NodeLabel.INTERFACE, name=trait_name, file=rel_path)
+            graph.add_edge(type_id, trait_id, EdgeType.IMPLEMENTS)
+
+        # Extract methods inside impl body
+        body = _find_child_by_type(node, "declaration_list")
+        if body:
+            for child in body.children:
+                if child.type in lang_types.get("function_def", []):
+                    func_id = self._extract_function(
+                        child, source, lang, file_id, rel_path, graph
+                    )
+                    graph.add_edge(type_id, func_id, EdgeType.CONTAINS)
+                    self._extract_calls_from(
+                        child, source, lang, lang_types, func_id, rel_path, graph
+                    )
+
+    def _extract_fields(
+        self,
+        node: ts.Node,
+        source: bytes,
+        parent_id: str,
+        graph: GraphData,
+    ) -> None:
+        """Extract fields from a struct/class body."""
+        for child in node.children:
+            if child.type in ("field_declaration", "field_declaration_list"):
+                if child.type == "field_declaration_list":
+                    for fc in child.children:
+                        if fc.type == "field_declaration":
+                            self._add_field_node(fc, source, parent_id, graph)
+                else:
+                    self._add_field_node(child, source, parent_id, graph)
+            # Recurse into body
+            if child.type in ("field_declaration_list", "struct_body", "class_body"):
+                self._extract_fields(child, source, parent_id, graph)
+
+    def _add_field_node(
+        self,
+        node: ts.Node,
+        source: bytes,
+        parent_id: str,
+        graph: GraphData,
+    ) -> None:
+        """Add a Field node for a field declaration."""
+        text = _node_text(node, source).strip().rstrip(";")
+        # Use position as part of ID for uniqueness
+        field_id = f"field:{parent_id}:{node.start_point[0]}:{node.start_point[1]}"
+        graph.add_node(
+            field_id,
+            NodeLabel.FIELD,
+            name=text[:200],
+            type="",
+        )
+        graph.add_edge(parent_id, field_id, EdgeType.CONTAINS)
+
+    def _extract_parameters(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        func_id: str,
+        graph: GraphData,
+    ) -> None:
+        """Extract parameter nodes from a function definition."""
+        param_list = _find_child_by_field(node, "parameters") or _find_child_by_type(
+            node, "parameter_list", "formal_parameters", "parameters"
+        )
+        if not param_list:
+            return
+
+        idx = 0
+        for child in param_list.children:
+            if child.type in (
+                "parameter_declaration",
+                "parameter",
+                "formal_parameter",
+                "simple_parameter",
+                "required_parameter",
+                "optional_parameter",
+            ):
+                text = _node_text(child, source).strip()
+                param_id = f"param:{func_id}:{idx}"
+                graph.add_node(
+                    param_id,
+                    NodeLabel.PARAMETER,
+                    name=text[:200],
+                    index=idx,
+                    function=func_id,
+                )
+                graph.add_edge(func_id, param_id, EdgeType.CONTAINS)
+                idx += 1
+
+    def _extract_calls_from(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        lang_types: dict[str, list[str]],
+        caller_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> None:
+        """Walk a subtree and extract CALLS edges."""
+        call_types = lang_types.get("call", [])
+        self._find_calls_recursive(node, source, call_types, caller_id, rel_path, graph)
+
+    def _find_calls_recursive(
+        self,
+        node: ts.Node,
+        source: bytes,
+        call_types: list[str],
+        caller_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> None:
+        """Recursively find call expressions."""
+        if node.type in call_types:
+            callee_name = self._get_callee_name(node, source)
+            if callee_name:
+                # Create an unresolved function reference
+                callee_id = f"funcref:{callee_name}"
+                graph.add_node(callee_id, NodeLabel.FUNCTION, name=callee_name)
+                graph.add_edge(caller_id, callee_id, EdgeType.CALLS)
+
+        for child in node.children:
+            self._find_calls_recursive(child, source, call_types, caller_id, rel_path, graph)
+
+    def _extract_inheritance(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        cls_id: str,
+        rel_path: str,
+        graph: GraphData,
+    ) -> None:
+        """Extract INHERITS and IMPLEMENTS edges from class definitions."""
+        # Look for base class / superclass specifiers
+        for child in node.children:
+            if child.type in (
+                "base_class_clause",      # C++
+                "superclass",             # Java, Kotlin, Swift
+                "super_interfaces",       # Java
+                "extends_type",           # TypeScript
+                "class_heritage",         # JS/TS
+                "superclass_clause",      # Swift
+            ):
+                base_text = _node_text(child, source).strip()
+                # Simple heuristic: take the main type name
+                for token in base_text.replace(",", " ").split():
+                    token = token.strip(":{}() ")
+                    if token and token not in ("extends", "implements", "public", "private",
+                                                "protected", "virtual", ":"):
+                        base_id = f"class:{rel_path}:{token}"
+                        graph.add_edge(cls_id, base_id, EdgeType.INHERITS)
+
+    # ── Name extraction helpers ─────────────────────────────────────────────
+
+    def _get_function_name(self, node: ts.Node, source: bytes, lang: str) -> str:
+        """Extract function name from a function definition node."""
+        # Try field name first (most grammars use 'name' or 'declarator')
+        name_node = _find_child_by_field(node, "name")
+        if name_node:
+            return _node_text(name_node, source)
+
+        declarator = _find_child_by_field(node, "declarator")
+        if declarator:
+            # C/C++ — declarator can be nested (pointer_declarator, function_declarator)
+            return self._unwrap_declarator(declarator, source)
+
+        # Fallback: first identifier child
+        for child in node.children:
+            if child.type == "identifier":
+                return _node_text(child, source)
+
+        return f"anonymous_{node.start_point[0]}"
+
+    def _unwrap_declarator(self, node: ts.Node, source: bytes) -> str:
+        """Unwrap C/C++ declarators to find the actual name."""
+        if node.type == "identifier":
+            return _node_text(node, source)
+        if node.type == "field_identifier":
+            return _node_text(node, source)
+        # function_declarator -> declarator -> identifier
+        inner = _find_child_by_field(node, "declarator")
+        if inner:
+            return self._unwrap_declarator(inner, source)
+        # Try first identifier
+        for child in node.children:
+            if child.type in ("identifier", "field_identifier"):
+                return _node_text(child, source)
+        return _node_text(node, source).split("(")[0].strip().split()[-1] if node.children else ""
+
+    def _get_name(self, node: ts.Node, source: bytes, lang: str) -> str:
+        """Generic name extraction for classes, structs, enums, etc."""
+        name_node = _find_child_by_field(node, "name")
+        if name_node:
+            return _node_text(name_node, source)
+        # Try first identifier
+        for child in node.children:
+            if child.type in ("identifier", "type_identifier", "name"):
+                return _node_text(child, source)
+        return f"anonymous_{node.start_point[0]}"
+
+    def _get_macro_name(self, node: ts.Node, source: bytes) -> str:
+        """Extract macro name from a preprocessor definition."""
+        name_node = _find_child_by_field(node, "name")
+        if name_node:
+            return _node_text(name_node, source)
+        # Second child is typically the name (after #define)
+        for child in node.children:
+            if child.type == "identifier":
+                return _node_text(child, source)
+        return f"macro_{node.start_point[0]}"
+
+    def _get_function_params(self, node: ts.Node, source: bytes, lang: str) -> str:
+        """Extract parameter string."""
+        param_list = _find_child_by_field(node, "parameters") or _find_child_by_type(
+            node, "parameter_list", "formal_parameters", "parameters"
+        )
+        if param_list:
+            return _node_text(param_list, source)
+        return ""
+
+    def _get_function_return_type(self, node: ts.Node, source: bytes, lang: str) -> str:
+        """Extract return type if available."""
+        ret = _find_child_by_field(node, "return_type")
+        if ret:
+            return _node_text(ret, source)
+        # C/C++: type is in the type specifier before the declarator
+        type_node = _find_child_by_field(node, "type")
+        if type_node:
+            return _node_text(type_node, source)
+        return ""
+
+    def _get_callee_name(self, node: ts.Node, source: bytes) -> str:
+        """Extract the function being called from a call expression."""
+        func_node = _find_child_by_field(node, "function")
+        if func_node:
+            text = _node_text(func_node, source)
+            # Strip out complex expressions — take last identifier-like segment
+            # e.g., "obj->method" -> "method", "ns::func" -> "func"
+            for sep in ("->", "::", ".", "/"):
+                if sep in text:
+                    text = text.rsplit(sep, 1)[-1]
+            return text.strip()
+
+        # method_invocation (Java) — name field
+        name_node = _find_child_by_field(node, "name")
+        if name_node:
+            return _node_text(name_node, source)
+
+        # message_expression (ObjC)
+        selector = _find_child_by_field(node, "selector")
+        if selector:
+            return _node_text(selector, source)
+
+        return ""
+
+    def _parse_import_target(self, text: str) -> str:
+        """Parse import/include text to extract the module name."""
+        text = text.strip()
+        # C/C++: #include "file.h" or #include <file.h>
+        if text.startswith("#include"):
+            text = text[len("#include"):].strip()
+            return text.strip('"<>').strip()
+        # Rust: use foo::bar;
+        if text.startswith("use "):
+            return text[4:].rstrip(";").strip()
+        # Java/Kotlin: import foo.bar.Baz;
+        if text.startswith("import "):
+            target = text[7:].rstrip(";").strip()
+            # Remove "static " prefix
+            if target.startswith("static "):
+                target = target[7:]
+            return target
+        # JS/TS: import { x } from "module" or import "module"
+        if "from" in text:
+            parts = text.split("from")
+            return parts[-1].strip().strip("'\"; ")
+        if text.startswith("import "):
+            return text[7:].strip("'\"(); ")
+        return text[:200]
+
+    def _is_exported(self, text: str, lang: str) -> bool:
+        """Check if a function/symbol is exported."""
+        first_line = text.split("\n")[0] if "\n" in text else text
+        if lang in ("c", "cpp"):
+            return "static" not in first_line
+        if lang == "rust":
+            return first_line.strip().startswith("pub ")
+        if lang in ("java", "kotlin"):
+            return "public" in first_line
+        if lang == "go":
+            # Go exports start with uppercase
+            parts = first_line.split("func")
+            if len(parts) > 1:
+                name_part = parts[1].strip().lstrip("(")
+                return name_part[:1].isupper() if name_part else False
+        if lang == "swift":
+            return "private" not in first_line and "fileprivate" not in first_line
+        if lang in ("javascript", "typescript"):
+            return "export" in first_line
+        return True
