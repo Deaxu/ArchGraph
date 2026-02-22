@@ -152,6 +152,7 @@ class EdgeType:
     # Security / Dependency
     DEPENDS_ON = "DEPENDS_ON"
     FIXED_BY = "FIXED_BY"
+    AFFECTS = "AFFECTS"
     HAS_ANNOTATION = "HAS_ANNOTATION"
     COMPILED_WITH = "COMPILED_WITH"
     # Clang deep analysis

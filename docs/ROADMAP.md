@@ -32,10 +32,13 @@ Durum ikonları: done, partial, planned, deferred
 
 ### Adım 5: Git extractor — DONE
 - [x] `git.py` — commit geçmişi, yazar, parent chain
-- [x] File→Commit mapping (MODIFIED_IN)
-- [x] Tag extraction (TAGGED_AS)
+- [x] File→Commit mapping (MODIFIED_IN) — per-file `lines_added`, `lines_deleted` property'leri
+- [x] Commit node property'leri — `total_insertions`, `total_deletions`, `files_changed`
+- [x] Tag extraction (TAGGED_AS) — full hash ile commit node'a bağlantı
 - [x] Security commit tespiti (CVE, buffer overflow, use-after-free, vb.)
+- [x] SecurityFix → AFFECTS → File (güvenlik fix'inin etkilediği dosyalar)
 - [x] `churn.py` — dosya değişim sıklığı enrichment
+- [x] `--numstat` parser bug fix — blank-line tolerant parsing
 
 ### Adım 6: Dependency extraction — DONE
 - [x] Cargo.toml (tam TOML parse + regex fallback)
@@ -56,6 +59,7 @@ Durum ikonları: done, partial, planned, deferred
 ### Adım 8: Graph builder pipeline — DONE
 - [x] `builder.py` — tüm extractor'ları sırayla çalıştır, merge, deduplicate
 - [x] `cli.py` — `archgraph extract` komutu, tüm flag'ler
+- [x] `cli.py` — GitHub URL desteği (auto clone, `--branch`, `--depth`, temp cleanup)
 
 ### Adım 9: rlm-agent tool — DONE
 - [x] `archgraph_tool.py` — query(), schema(), stats()
@@ -155,7 +159,7 @@ Durum ikonları: done, partial, planned, deferred
 - [ ] Neo4j APOC batch import kullanımı
 
 ### Ölçek Doğrulama
-- [ ] Küçük proje testi (zlib ~50K LOC)
+- [x] Küçük proje testi (zlib ~50K LOC) — 3,577 node, 11,100 edge, 1,020 commit, 89 yazar
 - [ ] Orta proje testi (OpenSSL ~500K LOC)
 - [ ] Büyük proje testi (FFmpeg ~1M LOC)
 - [ ] Extraction süresi ve graph boyutu benchmarkları

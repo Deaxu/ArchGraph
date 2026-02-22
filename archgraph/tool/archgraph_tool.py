@@ -1,4 +1,4 @@
-"""rlm-agent BaseTool integration — exposes Cypher query interface."""
+"""rlm-agent BaseTool integration — exposes Cypher query interface over Neo4j code graph."""
 
 from __future__ import annotations
 
@@ -9,22 +9,86 @@ from archgraph.graph.neo4j_store import Neo4jStore
 
 logger = logging.getLogger(__name__)
 
+# Import BaseTool and tool_method if rlm-agent is installed, otherwise provide stubs.
+try:
+    from rlm_agent import BaseTool
+    from rlm_agent.tools import tool_method
+except ImportError:
 
-class ArchGraphTool:
-    """Source code graph database tool for rlm-agent.
+    class BaseTool:  # type: ignore[no-redef]
+        """Stub base class when rlm-agent is not installed."""
 
-    Provides Cypher query access to the code knowledge graph
-    stored in Neo4j, including code structure, call chains,
-    data flow, git history, and vulnerability patterns.
+    def tool_method(  # type: ignore[no-redef]
+        description: str = "", returns: str = ""
+    ):  # noqa: ANN201
+        """No-op decorator stub."""
+        def wrapper(fn):  # noqa: ANN001, ANN202
+            return fn
+        return wrapper
 
-    Usage (standalone, without rlm-agent dependency):
-        tool = ArchGraphTool(neo4j_uri="bolt://localhost:7687")
-        tool.connect()
-        results = tool.query("MATCH (f:Function) RETURN f.name LIMIT 10")
-        tool.close()
 
-    If rlm-agent is available, this can be registered as a BaseTool.
-    """
+_DESCRIPTION = """\
+Source code knowledge graph stored in Neo4j. Query with Cypher.
+
+## Node Labels & Key Properties
+
+- **File**: path, language, loc, churn_count, last_modified
+- **Function**: name, file, line_start, is_exported, is_input_source, is_dangerous_sink, \
+is_allocator, is_crypto, is_parser, is_unsafe, has_unsafe_block, has_transmute, \
+has_force_unwrap, has_goroutine, has_channel_op, has_defer
+- **Class**: name, file, line_start
+- **Struct**: name, file, line_start
+- **Interface**: name, file, line_start (traits, protocols)
+- **Enum**: name, file, line_start
+- **Module**: name, path (namespace, package, use/import target)
+- **Macro**: name, file, line_start
+- **Parameter**: name, type
+- **Field**: name, type
+- **BasicBlock**: block_index, stmt_count, function, file (CFG node)
+- **Commit**: hash, message, date, total_insertions, total_deletions, files_changed
+- **Author**: name, email
+- **Tag**: name, commit_hash, date (release tags)
+- **SecurityFix**: description, commit_hash
+- **Dependency**: name, version, manager
+- **Annotation**: type (TODO/HACK/FIXME/UNSAFE/BUG/SECURITY/...), text, line
+
+## Edge Types & Properties
+
+- **CONTAINS**: File → Function/Class/Struct/Enum/Macro
+- **CALLS**: Function → Function (includes unresolved funcref: nodes)
+- **IMPORTS**: File → Module
+- **INHERITS**: Class → Class
+- **IMPLEMENTS**: Class → Interface
+- **USES_TYPE**: Function → Type
+- **OVERRIDES**: Function → Function
+- **EXPANDS_MACRO**: Function → Macro
+- **DATA_FLOWS_TO**: Function self-edge (from_var, to_var, from_line, to_line)
+- **TAINTS**: funcref → funcref (tainted input propagation chain)
+- **BRANCHES_TO**: BasicBlock → BasicBlock (CFG edges)
+- **MODIFIED_IN**: File → Commit (lines_added, lines_deleted per file per commit)
+- **AUTHORED_BY**: Commit → Author
+- **TAGGED_AS**: Commit → Tag
+- **PARENT**: Commit → Commit
+- **DEPENDS_ON**: File → Dependency
+- **FIXED_BY**: SecurityFix → Commit
+- **AFFECTS**: SecurityFix → File
+- **HAS_ANNOTATION**: File → Annotation
+
+## ID Format
+
+All nodes have a unique `_id` property: `{type}:{path}:{name}:{line}`
+Examples: `func:src/main.c:parse_data:42`, `file:inflate.c`, `commit:<hash>`
+
+## Tips
+
+- All nodes also carry the `_Node` label for cross-label queries.
+- Use `_id` for exact lookups: `MATCH (n:_Node {_id: $id})`
+- `funcref:` prefix = unresolved call target (no definition found in codebase).\
+"""
+
+
+class ArchGraphTool(BaseTool):
+    """Source code knowledge graph — Cypher query interface."""
 
     def __init__(
         self,
@@ -47,10 +111,9 @@ class ArchGraphTool:
 
     @property
     def description(self) -> str:
-        return (
-            "Source code graph database — query code structure, call chains, "
-            "data flow, git history, and vulnerabilities via Cypher"
-        )
+        return _DESCRIPTION
+
+    # ── Lifecycle ────────────────────────────────────────────────────────────
 
     def connect(self) -> None:
         """Connect to Neo4j."""
@@ -61,6 +124,10 @@ class ArchGraphTool:
         """Close connection."""
         self._store.close()
         self._connected = False
+
+    def cleanup(self) -> None:
+        """Called by rlm-agent when the session closes."""
+        self.close()
 
     def __enter__(self) -> ArchGraphTool:
         self.connect()
@@ -73,12 +140,18 @@ class ArchGraphTool:
         if not self._connected:
             self.connect()
 
+    # ── Tool method ──────────────────────────────────────────────────────────
+
+    @tool_method(
+        description="Execute a Cypher query against the code knowledge graph",
+        returns="list of result records as dicts",
+    )
     def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-        """Execute a Cypher query against the code graph.
+        """Execute a Cypher query.
 
         Args:
             cypher: Cypher query string.
-            params: Optional query parameters.
+            params: Optional query parameters (use $name syntax in Cypher).
 
         Returns:
             List of result records as dicts.
@@ -86,126 +159,7 @@ class ArchGraphTool:
         self._ensure_connected()
         return self._store.query(cypher, params)
 
-    def schema(self) -> dict[str, Any]:
-        """Get graph schema — all node labels, relationship types, and their properties.
-
-        Returns:
-            Dict with 'node_labels', 'relationship_types', and 'property_keys'.
-        """
-        self._ensure_connected()
-        return self._store.schema_info()
-
-    def stats(self) -> dict[str, Any]:
-        """Get statistics — node/edge counts per type.
-
-        Returns:
-            Dict with 'nodes' and 'edges' sub-dicts containing counts.
-        """
-        self._ensure_connected()
-        return self._store.stats()
-
-    # ── Convenience query methods for common patterns ───────────────────────
-
-    def find_attack_surface(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Find functions that receive external input (attack surface)."""
-        return self.query(
-            "MATCH (f:Function {is_input_source: true}) "
-            "RETURN f.name AS name, f.file AS file, f.line_start AS line "
-            "ORDER BY f.name LIMIT $limit",
-            params={"limit": limit},
-        )
-
-    def find_dangerous_paths(
-        self, source_name: str, max_depth: int = 5
-    ) -> list[dict[str, Any]]:
-        """Find call paths from a source function to dangerous sinks."""
-        return self.query(
-            "MATCH path = (f:Function {name: $name})"
-            "-[:CALLS*1..$depth]->(sink:Function {is_dangerous_sink: true}) "
-            "RETURN [n IN nodes(path) | n.name] AS chain, "
-            "sink.name AS sink_name, length(path) AS depth",
-            params={"name": source_name, "depth": max_depth},
-        )
-
-    def find_security_fixes(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Find commits identified as security fixes."""
-        return self.query(
-            "MATCH (sf:SecurityFix)-[:FIXED_BY]->(c:Commit) "
-            "RETURN c.hash AS hash, c.message AS message, c.date AS date "
-            "ORDER BY c.date DESC LIMIT $limit",
-            params={"limit": limit},
-        )
-
-    def find_high_churn_files(self, min_churn: int = 20, limit: int = 30) -> list[dict[str, Any]]:
-        """Find files with high change frequency (potential bug hotspots)."""
-        return self.query(
-            "MATCH (f:File) WHERE f.churn_count >= $min_churn "
-            "RETURN f.path AS path, f.churn_count AS churn, f.language AS language "
-            "ORDER BY f.churn_count DESC LIMIT $limit",
-            params={"min_churn": min_churn, "limit": limit},
-        )
-
-    def find_taint_paths(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Find taint propagation paths (input source → dangerous sink)."""
-        return self.query(
-            "MATCH (src)-[t:TAINTS]->(sink) "
-            "RETURN src._id AS source, sink._id AS sink, "
-            "t.via_function AS via_function, t.via_variable AS via_variable, "
-            "t.file AS file "
-            "LIMIT $limit",
-            params={"limit": limit},
-        )
-
-    def find_function_cfg(self, func_name: str) -> list[dict[str, Any]]:
-        """Get the control flow graph of a function (BasicBlock nodes + edges)."""
-        return self.query(
-            "MATCH (f:Function {name: $name})-[:CONTAINS]->(bb:BasicBlock) "
-            "OPTIONAL MATCH (bb)-[:BRANCHES_TO]->(succ:BasicBlock) "
-            "RETURN bb._id AS block, bb.block_index AS idx, "
-            "bb.stmt_count AS stmts, collect(succ.block_index) AS successors "
-            "ORDER BY bb.block_index",
-            params={"name": func_name},
-        )
-
-    def find_data_flows(self, func_name: str) -> list[dict[str, Any]]:
-        """Get data flow edges within a function."""
-        return self.query(
-            "MATCH (f:Function {name: $name})-[d:DATA_FLOWS_TO]->(f) "
-            "RETURN d.from_var AS from_var, d.from_line AS from_line, "
-            "d.to_var AS to_var, d.to_line AS to_line "
-            "ORDER BY d.from_line",
-            params={"name": func_name},
-        )
-
-
-    def find_unsafe_functions(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Find functions with unsafe patterns (unsafe blocks, transmute, force unwrap, etc.)."""
-        return self.query(
-            "MATCH (f:Function) "
-            "WHERE f.has_unsafe_block = true OR f.is_unsafe_fn = true "
-            "OR f.has_transmute = true OR f.has_force_unwrap = true "
-            "OR f.has_unsafe_pointer = true "
-            "RETURN f.name AS name, f.file AS file, f.line_start AS line, "
-            "f.has_unsafe_block AS unsafe_block, f.is_unsafe_fn AS unsafe_fn, "
-            "f.has_transmute AS transmute, f.has_force_unwrap AS force_unwrap "
-            "ORDER BY f.name LIMIT $limit",
-            params={"limit": limit},
-        )
-
-    def find_goroutine_spawners(self, limit: int = 50) -> list[dict[str, Any]]:
-        """Find Go functions that spawn goroutines."""
-        return self.query(
-            "MATCH (f:Function {has_goroutine: true}) "
-            "RETURN f.name AS name, f.file AS file, f.line_start AS line, "
-            "f.has_channel_op AS channel_op, f.has_defer AS has_defer "
-            "ORDER BY f.name LIMIT $limit",
-            params={"limit": limit},
-        )
-
 
 def create_tool(**kwargs: Any) -> ArchGraphTool:
-    """Factory function to create and return an ArchGraphTool instance.
-
-    This can be used as an entry point for tool registration.
-    """
+    """Factory function for entry-point registration."""
     return ArchGraphTool(**kwargs)

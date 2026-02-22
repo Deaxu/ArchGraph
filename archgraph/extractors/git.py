@@ -52,7 +52,7 @@ class GitExtractor(BaseExtractor):
 
     def _extract_commits(self, repo_path: Path, graph: GraphData) -> None:
         """Extract commits with author and changed files."""
-        # Format: hash|parent_hashes|author_name|author_email|date|subject|insertions|deletions
+        # Format: hash|parent_hashes|author_name|author_email|date|subject
         log_format = "%H|%P|%aN|%aE|%aI|%s"
         raw = _run_git(
             repo_path,
@@ -65,21 +65,19 @@ class GitExtractor(BaseExtractor):
             return
 
         current_commit: dict | None = None
-        commit_files: list[str] = []
+        commit_files: list[dict] = []
 
         for line in raw.split("\n"):
             line = line.strip()
-            if not line:
-                # Flush previous commit
-                if current_commit:
-                    self._add_commit(current_commit, commit_files, repo_path, graph)
-                    current_commit = None
-                    commit_files = []
-                continue
 
-            parts = line.split("|", 5)
-            if len(parts) == 6 and len(parts[0]) == 40:
-                # New commit line
+            # Try to detect a commit header line
+            parts = line.split("|", 5) if line else []
+            is_header = len(parts) == 6 and len(parts[0]) == 40 and all(
+                c in "0123456789abcdef" for c in parts[0]
+            )
+
+            if is_header:
+                # Flush previous commit before starting a new one
                 if current_commit:
                     self._add_commit(current_commit, commit_files, repo_path, graph)
                     commit_files = []
@@ -96,7 +94,14 @@ class GitExtractor(BaseExtractor):
                 # Numstat line: insertions\tdeletions\tfilepath
                 stat_parts = line.split("\t")
                 if len(stat_parts) >= 3:
-                    commit_files.append(stat_parts[2])
+                    added = int(stat_parts[0]) if stat_parts[0].isdigit() else 0
+                    deleted = int(stat_parts[1]) if stat_parts[1].isdigit() else 0
+                    commit_files.append({
+                        "path": stat_parts[2],
+                        "lines_added": added,
+                        "lines_deleted": deleted,
+                    })
+            # Blank lines are ignored — flush happens at next header or end
 
         # Flush last commit
         if current_commit:
@@ -105,18 +110,25 @@ class GitExtractor(BaseExtractor):
     def _add_commit(
         self,
         commit: dict,
-        files: list[str],
+        files: list[dict],
         repo_path: Path,
         graph: GraphData,
     ) -> None:
         """Add a commit node, author, and file relationships."""
         commit_id = f"commit:{commit['hash']}"
+
+        total_added = sum(f["lines_added"] for f in files)
+        total_deleted = sum(f["lines_deleted"] for f in files)
+
         graph.add_node(
             commit_id,
             NodeLabel.COMMIT,
             hash=commit["hash"],
             message=commit["message"][:500],
             date=commit["date"],
+            total_insertions=total_added,
+            total_deletions=total_deleted,
+            files_changed=len(files),
         )
 
         # Author
@@ -134,10 +146,16 @@ class GitExtractor(BaseExtractor):
             parent_id = f"commit:{parent_hash}"
             graph.add_edge(commit_id, parent_id, EdgeType.PARENT)
 
-        # File modifications
-        for file_path in files:
-            file_id = f"file:{file_path}"
-            graph.add_edge(file_id, commit_id, EdgeType.MODIFIED_IN)
+        # File modifications — with per-file change stats
+        for file_info in files:
+            file_id = f"file:{file_info['path']}"
+            graph.add_edge(
+                file_id,
+                commit_id,
+                EdgeType.MODIFIED_IN,
+                lines_added=file_info["lines_added"],
+                lines_deleted=file_info["lines_deleted"],
+            )
 
         # Security fix detection
         if self._is_security_commit(commit["message"]):
@@ -150,13 +168,21 @@ class GitExtractor(BaseExtractor):
             )
             graph.add_edge(fix_id, commit_id, EdgeType.FIXED_BY)
 
+            # Link security fix directly to affected files
+            for file_info in files:
+                file_id = f"file:{file_info['path']}"
+                graph.add_edge(fix_id, file_id, EdgeType.AFFECTS)
+
     def _is_security_commit(self, message: str) -> bool:
         """Check if a commit message indicates a security fix."""
         return any(rx.search(message) for rx in _SECURITY_RE)
 
     def _extract_tags(self, repo_path: Path, graph: GraphData) -> None:
         """Extract release tags."""
-        raw = _run_git(repo_path, "tag", "-l", "--format=%(refname:short)|%(objectname:short)|%(*objectname:short)|%(creatordate:iso-strict)")
+        raw = _run_git(
+            repo_path, "tag", "-l",
+            "--format=%(refname:short)|%(objectname)|%(*objectname)|%(creatordate:iso-strict)",
+        )
         if not raw:
             return
 
@@ -167,7 +193,7 @@ class GitExtractor(BaseExtractor):
             if len(parts) < 2:
                 continue
             tag_name = parts[0]
-            # For annotated tags, the pointed-to commit is in parts[2]
+            # For annotated tags, %(*objectname) gives the dereferenced commit hash
             commit_hash = parts[2] if len(parts) > 2 and parts[2] else parts[1]
             date = parts[3] if len(parts) > 3 else ""
 
@@ -180,6 +206,6 @@ class GitExtractor(BaseExtractor):
                 date=date,
             )
 
-            # Link to commit
+            # Link to commit (full hash — matches commit node IDs)
             commit_id = f"commit:{commit_hash}"
             graph.add_edge(commit_id, tag_id, EdgeType.TAGGED_AS)

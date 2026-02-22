@@ -9,10 +9,11 @@ ArchGraph parses source code across 10 languages using tree-sitter, extracts str
 - **Multi-language AST parsing** — C, C++, Rust, Java, Go, JavaScript, TypeScript, Kotlin, Swift, Objective-C
 - **Deep semantic analysis** — CFG, data flow, taint tracking (C/C++ via libclang, others via tree-sitter)
 - **Security auditing** — Input source/dangerous sink detection, taint propagation, unsafe pattern detection
-- **Git integration** — Commit history, author mapping, security fix detection, file churn analysis
+- **Git integration** — Full commit history with per-file change stats, author mapping, security fix detection, file churn analysis
+- **GitHub URL support** — Clone and extract directly from GitHub URLs with branch/depth options
 - **Dependency extraction** — 10 package managers (Cargo, go.mod, npm, Gradle, CMake, vcpkg, Conan, CocoaPods, SPM, Maven)
 - **Neo4j storage** — Batch import with indexing, Cypher query interface
-- **rlm-agent tool** — Standalone tool with convenience methods for security analysis
+- **rlm-agent tool** — Single `query()` method with full schema in tool description
 
 ## Architecture
 
@@ -20,10 +21,10 @@ ArchGraph parses source code across 10 languages using tree-sitter, extracts str
                     ┌──────────────────────────────────────────┐
                     │           GraphBuilder Pipeline           │
                     │                                          │
-  Source Code ──────┤  1. Tree-sitter structural extraction    │
-  Repository        │  2. Git history & churn enrichment       │
-                    │  3. Dependency extraction                │──── GraphData ──── Neo4j
-                    │  4. Annotation scanning                  │      (nodes +       Store
+  Local Path ───────┤  1. Tree-sitter structural extraction    │
+     or             │  2. Git history & churn enrichment       │
+  GitHub URL ───────┤  3. Dependency extraction                │──── GraphData ──── Neo4j
+  (auto clone)      │  4. Annotation scanning                  │      (nodes +       Store
                     │  5. Security labeling                    │       edges)
                     │  6. Clang deep analysis (C/C++)          │
                     │  7. Tree-sitter deep analysis            │
@@ -32,14 +33,15 @@ ArchGraph parses source code across 10 languages using tree-sitter, extracts str
                                                                         │
                                                                         ▼
                                                                ┌─────────────────┐
+                                                               ┌─────────────────┐
                                                                │  ArchGraphTool   │
                                                                │  (rlm-agent)     │
                                                                │                  │
-                                                               │  query()         │
-                                                               │  schema()        │
-                                                               │  stats()         │
-                                                               │  find_attack_    │
-                                                               │    surface()     │
+                                                               │  query(cypher)   │
+                                                               │                  │
+                                                               │  description has │
+                                                               │  full schema for │
+                                                               │  agent context   │
                                                                └─────────────────┘
 ```
 
@@ -49,7 +51,7 @@ ArchGraph parses source code across 10 languages using tree-sitter, extracts str
 
 | Label | Description | Key Properties |
 |-------|-------------|----------------|
-| File | Source file | path, language, loc |
+| File | Source file | path, language, loc, churn_count, last_modified |
 | Function | Function/method | name, file, line, is_exported, is_input_source, is_dangerous_sink |
 | Class | Class definition | name, file, line |
 | Struct | Struct/record | name, file, line |
@@ -60,30 +62,33 @@ ArchGraph parses source code across 10 languages using tree-sitter, extracts str
 | Parameter | Function parameter | name, type |
 | Field | Struct/class field | name, type |
 | BasicBlock | CFG basic block | index, statement_count |
-| Commit | Git commit | hash, message, timestamp |
+| Commit | Git commit | hash, message, date, total_insertions, total_deletions, files_changed |
 | Author | Commit author | name, email |
-| SecurityFix | Security-related commit | message, cve_id |
+| Tag | Release tag | name, commit_hash, date |
+| SecurityFix | Security-related commit | description, commit_hash |
 | Dependency | External dependency | name, version |
 | Annotation | Code annotation | type (TODO/HACK/FIXME/...), text |
 
 ### Edge Types
 
-| Type | Description |
-|------|-------------|
-| CONTAINS | File → Function/Class/Struct |
-| CALLS | Function → Function |
-| IMPORTS | File → Module |
-| INHERITS | Class → Class |
-| IMPLEMENTS | Class → Interface |
-| USES_TYPE | Function → Type |
-| DATA_FLOWS_TO | Variable data flow (intra-procedural) |
-| TAINTS | Tainted data propagation (source → sink) |
-| BRANCHES_TO | CFG edge between basic blocks |
-| DEPENDS_ON | Project → External dependency |
-| MODIFIED_IN | File → Commit |
-| AUTHORED_BY | Commit → Author |
-| FIXED_BY | File → SecurityFix |
-| HAS_ANNOTATION | File → Annotation |
+| Type | Description | Properties |
+|------|-------------|------------|
+| CONTAINS | File → Function/Class/Struct | |
+| CALLS | Function → Function | |
+| IMPORTS | File → Module | |
+| INHERITS | Class → Class | |
+| IMPLEMENTS | Class → Interface | |
+| USES_TYPE | Function → Type | |
+| DATA_FLOWS_TO | Variable data flow (intra-procedural) | from_var, to_var |
+| TAINTS | Tainted data propagation (source → sink) | |
+| BRANCHES_TO | CFG edge between basic blocks | |
+| DEPENDS_ON | Project → External dependency | |
+| MODIFIED_IN | File → Commit | lines_added, lines_deleted |
+| AUTHORED_BY | Commit → Author | |
+| TAGGED_AS | Commit → Tag | |
+| FIXED_BY | SecurityFix → Commit | |
+| AFFECTS | SecurityFix → File | |
+| HAS_ANNOTATION | File → Annotation | |
 
 ## Installation
 
@@ -113,11 +118,21 @@ pip install -e ".[dev]"
 ### CLI
 
 ```bash
-# Extract graph from a repository
+# Extract from a local directory
 archgraph extract /path/to/repo \
   --languages c,cpp,rust,java,go \
   --neo4j-uri bolt://localhost:7687 \
   --include-deep
+
+# Extract directly from a GitHub URL
+archgraph extract https://github.com/madler/zlib \
+  --languages c,cpp \
+  --neo4j-uri bolt://localhost:7687 \
+  --clear-db
+
+# Clone specific branch with shallow depth
+archgraph extract https://github.com/user/repo \
+  --branch main --depth 100
 
 # Run Cypher queries
 archgraph query "MATCH (f:Function {is_input_source: true}) RETURN f.name LIMIT 10"
@@ -155,26 +170,28 @@ store.close()
 
 ### rlm-agent Tool
 
+The tool exposes a single `query()` method. The full graph schema (node labels, edge types,
+properties, ID format) is embedded in `tool.description` so the agent has it in context
+and can write Cypher autonomously.
+
 ```python
 from archgraph.tool.archgraph_tool import ArchGraphTool
 
 with ArchGraphTool(neo4j_uri="bolt://localhost:7687") as tool:
-    # Find attack surface
-    sources = tool.find_attack_surface()
+    # The agent sees the full schema via tool.description — no discovery calls needed.
+    # It writes Cypher directly:
 
-    # Trace data flow from input to dangerous sink
-    paths = tool.find_dangerous_paths("recv", max_depth=5)
+    sources = tool.query("MATCH (f:Function {is_input_source: true}) RETURN f.name, f.file")
 
-    # Find security-related commits
-    fixes = tool.find_security_fixes()
+    paths = tool.query("""
+        MATCH p = (src:Function {is_input_source: true})-[:CALLS*1..5]->(sink:Function {is_dangerous_sink: true})
+        RETURN [n IN nodes(p) | n.name] AS chain, length(p) AS depth
+    """)
 
-    # Find high churn files (potential bug magnets)
-    churn = tool.find_high_churn_files(threshold=10)
-
-    # Custom Cypher query
-    results = tool.query("""
-        MATCH (f:Function {is_input_source: true})-[:CALLS*1..5]->(s:Function {is_dangerous_sink: true})
-        RETURN f.name AS source, s.name AS sink
+    fixes = tool.query("""
+        MATCH (sf:SecurityFix)-[:AFFECTS]->(f:File)
+        MATCH (sf)-[:FIXED_BY]->(c:Commit)-[:AUTHORED_BY]->(a:Author)
+        RETURN sf.description, f.path, a.name, c.date
     """)
 ```
 
@@ -219,7 +236,7 @@ ArchGraph automatically labels functions based on their security characteristics
 | `is_parser` | parse, deserialize, JSON.parse, unmarshal |
 | `is_unsafe` | unsafe blocks (Rust), pointer arithmetic (C) |
 
-### Example Security Queries
+### Example Queries for Agentic Code Analysis
 
 ```cypher
 -- Find input-to-sink paths (potential vulnerabilities)
@@ -230,15 +247,47 @@ RETURN src.name, sink.name, length(path)
 MATCH (a)-[:TAINTS]->(b)
 RETURN a._id, b._id, a.name, b.name
 
--- Find unsafe Rust functions with external input
-MATCH (f:Function {is_unsafe: true})<-[:CALLS]-(caller:Function {is_input_source: true})
-RETURN f.name, f.file, caller.name
+-- Largest commits (most code churn)
+MATCH (c:Commit)
+WHERE c.total_insertions > 100
+RETURN c.message, c.total_insertions, c.total_deletions, c.files_changed, c.date
+ORDER BY c.total_insertions DESC LIMIT 10
 
--- Find high-churn files with security annotations
-MATCH (f:File {change_count: c})-[:HAS_ANNOTATION]->(a:Annotation {type: 'SECURITY'})
-WHERE c > 10
-RETURN f.path, c, a.text
+-- High-churn files containing input source functions
+MATCH (f:File)-[m:MODIFIED_IN]->(c:Commit)
+WITH f, count(c) AS commits, sum(m.lines_added) AS total_added
+WHERE commits > 5
+MATCH (f)-[:CONTAINS]->(fn:Function {is_input_source: true})
+RETURN f.path, fn.name, commits, total_added
+ORDER BY commits DESC
+
+-- Which authors touched dangerous sink files most?
+MATCH (f:File)-[:CONTAINS]->(fn:Function {is_dangerous_sink: true})
+MATCH (f)-[:MODIFIED_IN]->(c:Commit)-[:AUTHORED_BY]->(a:Author)
+RETURN a.name, count(DISTINCT c) AS commits, collect(DISTINCT fn.name)[..5] AS sinks
+ORDER BY commits DESC
+
+-- Security fixes and affected files
+MATCH (sf:SecurityFix)-[:AFFECTS]->(f:File)
+MATCH (sf)-[:FIXED_BY]->(c:Commit)-[:AUTHORED_BY]->(a:Author)
+RETURN sf.description, f.path, a.name, c.date
+
+-- Release tag timeline with change stats
+MATCH (c:Commit)-[:TAGGED_AS]->(t:Tag)
+RETURN t.name, c.total_insertions, c.total_deletions, c.files_changed, c.date
+ORDER BY c.date DESC
+
+-- Per-file change stats in a specific commit
+MATCH (f:File)-[m:MODIFIED_IN]->(c:Commit {hash: $hash})
+RETURN f.path, m.lines_added, m.lines_deleted
+ORDER BY m.lines_added DESC
 ```
+
+## Validated Scale
+
+| Project | Files | Nodes | Edges | Commits | Authors |
+|---------|-------|-------|-------|---------|---------|
+| zlib (~50K LOC) | 79 | 3,577 | 11,100 | 1,020 | 89 |
 
 ## Supported Dependency Files
 
@@ -267,18 +316,18 @@ pytest tests/test_clang.py -v
 pytest tests/test_deep.py -v
 ```
 
-Tests use temporary directories with real tree-sitter parsing and git operations. No external services required.
+93 tests (89 passed, 4 skipped for optional Kotlin/Swift grammars). Tests use temporary directories with real tree-sitter parsing and git operations. No external services required.
 
 ## Project Structure
 
 ```
 archgraph/
-├── cli.py                  # Click CLI (extract, query, stats, schema)
+├── cli.py                  # Click CLI (extract, query, stats, schema) — GitHub URL support
 ├── config.py               # Constants, language maps, security patterns, ExtractConfig
 ├── extractors/
 │   ├── base.py             # BaseExtractor ABC
 │   ├── treesitter.py       # Multi-language AST parser (10 languages)
-│   ├── git.py              # Commit history, author, security fix detection
+│   ├── git.py              # Commit history with numstat, author, tags, security fix detection
 │   ├── dependencies.py     # 10 package manager parsers
 │   ├── annotations.py      # TODO/HACK/FIXME/UNSAFE scanner
 │   ├── security_labels.py  # Automatic security labeling
@@ -298,7 +347,7 @@ archgraph/
 ├── enrichment/
 │   └── churn.py            # Git file churn enrichment
 └── tool/
-    └── archgraph_tool.py   # rlm-agent tool (query, schema, stats, convenience methods)
+    └── archgraph_tool.py   # rlm-agent tool — single query() method, schema in description
 ```
 
 ## License
