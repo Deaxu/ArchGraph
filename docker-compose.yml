@@ -1,0 +1,29 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/archgraph
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "archgraph", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  archgraph:
+    build: .
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      ARCHGRAPH_NEO4J_URI: bolt://neo4j:7687
+      ARCHGRAPH_NEO4J_PASSWORD: archgraph
+    volumes:
+      - ./:/data/repo:ro
+
+volumes:
+  neo4j_data:

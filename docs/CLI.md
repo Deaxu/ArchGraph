@@ -52,6 +52,17 @@ archgraph extract /path/to/repo -l c,cpp,rust \
 archgraph extract /path/to/repo -l c -w 1 -v
 ```
 
+## Environment Variables
+
+Neo4j connection options can also be set via environment variables. Priority: CLI flag > environment variable > default.
+
+| Variable | CLI Flag | Default |
+|----------|----------|---------|
+| `ARCHGRAPH_NEO4J_URI` | `--neo4j-uri` | `bolt://localhost:7687` |
+| `ARCHGRAPH_NEO4J_USER` | `--neo4j-user` | `neo4j` |
+| `ARCHGRAPH_NEO4J_PASSWORD` | `--neo4j-password` | `neo4j` |
+| `ARCHGRAPH_NEO4J_DATABASE` | `--neo4j-database` | `neo4j` |
+
 ## `archgraph query`
 
 Execute a Cypher query against the graph database.

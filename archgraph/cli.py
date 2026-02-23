@@ -77,10 +77,14 @@ def main() -> None:
 )
 @click.option("--branch", "-b", default=None, help="Branch to clone (for git URLs)")
 @click.option("--depth", "-d", type=int, default=None, help="Clone depth (for git URLs)")
-@click.option("--neo4j-uri", default="bolt://localhost:7687", help="Neo4j bolt URI")
-@click.option("--neo4j-user", default="neo4j", help="Neo4j username")
-@click.option("--neo4j-password", default="neo4j", help="Neo4j password")
-@click.option("--neo4j-database", default="neo4j", help="Neo4j database name")
+@click.option("--neo4j-uri", default="bolt://localhost:7687",
+              envvar="ARCHGRAPH_NEO4J_URI", help="Neo4j bolt URI")
+@click.option("--neo4j-user", default="neo4j",
+              envvar="ARCHGRAPH_NEO4J_USER", help="Neo4j username")
+@click.option("--neo4j-password", default="neo4j",
+              envvar="ARCHGRAPH_NEO4J_PASSWORD", help="Neo4j password")
+@click.option("--neo4j-database", default="neo4j",
+              envvar="ARCHGRAPH_NEO4J_DATABASE", help="Neo4j database name")
 @click.option("--include-git/--no-git", default=True, help="Include git history extraction")
 @click.option("--include-deps/--no-deps", default=True, help="Include dependency extraction")
 @click.option("--include-annotations/--no-annotations", default=True, help="Include annotations")
@@ -206,10 +210,14 @@ def extract(
 
 
 @main.command()
-@click.option("--neo4j-uri", default="bolt://localhost:7687", help="Neo4j bolt URI")
-@click.option("--neo4j-user", default="neo4j", help="Neo4j username")
-@click.option("--neo4j-password", default="neo4j", help="Neo4j password")
-@click.option("--neo4j-database", default="neo4j", help="Neo4j database name")
+@click.option("--neo4j-uri", default="bolt://localhost:7687",
+              envvar="ARCHGRAPH_NEO4J_URI", help="Neo4j bolt URI")
+@click.option("--neo4j-user", default="neo4j",
+              envvar="ARCHGRAPH_NEO4J_USER", help="Neo4j username")
+@click.option("--neo4j-password", default="neo4j",
+              envvar="ARCHGRAPH_NEO4J_PASSWORD", help="Neo4j password")
+@click.option("--neo4j-database", default="neo4j",
+              envvar="ARCHGRAPH_NEO4J_DATABASE", help="Neo4j database name")
 @click.argument("cypher")
 def query(
     neo4j_uri: str,
@@ -243,10 +251,10 @@ def query(
 
 
 @main.command()
-@click.option("--neo4j-uri", default="bolt://localhost:7687")
-@click.option("--neo4j-user", default="neo4j")
-@click.option("--neo4j-password", default="neo4j")
-@click.option("--neo4j-database", default="neo4j")
+@click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
+@click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
+@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
 def stats(
     neo4j_uri: str,
     neo4j_user: str,
@@ -276,10 +284,10 @@ def stats(
 
 
 @main.command()
-@click.option("--neo4j-uri", default="bolt://localhost:7687")
-@click.option("--neo4j-user", default="neo4j")
-@click.option("--neo4j-password", default="neo4j")
-@click.option("--neo4j-database", default="neo4j")
+@click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
+@click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
+@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
 def schema(
     neo4j_uri: str,
     neo4j_user: str,

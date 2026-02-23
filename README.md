@@ -58,6 +58,22 @@ archgraph stats
 archgraph schema
 ```
 
+## Docker
+
+```bash
+# Start Neo4j
+docker compose up -d neo4j
+
+# Extract (mount your repo)
+docker compose run archgraph extract /data/repo -l c,cpp,rust -w 4
+
+# Query
+docker compose run archgraph query "MATCH (f:Function) RETURN f.name LIMIT 10"
+
+# Build with optional extras (clang, kotlin, swift, objc)
+docker build --build-arg INSTALL_EXTRAS=all -t archgraph .
+```
+
 ## Python API
 
 ```python
