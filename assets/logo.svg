@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="edge" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#818cf8" stop-opacity="0.6"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="64" fill="url(#bg)"/>
+
+  <!-- Graph edges -->
+  <g stroke="url(#edge)" stroke-width="2.5" fill="none" filter="url(#glow)">
+    <!-- Center to outer nodes -->
+    <line x1="256" y1="230" x2="148" y2="138"/>
+    <line x1="256" y1="230" x2="364" y2="138"/>
+    <line x1="256" y1="230" x2="128" y2="270"/>
+    <line x1="256" y1="230" x2="384" y2="270"/>
+    <line x1="256" y1="230" x2="168" y2="360"/>
+    <line x1="256" y1="230" x2="344" y2="360"/>
+    <!-- Cross edges -->
+    <line x1="148" y1="138" x2="128" y2="270"/>
+    <line x1="364" y1="138" x2="384" y2="270"/>
+    <line x1="128" y1="270" x2="168" y2="360"/>
+    <line x1="384" y1="270" x2="344" y2="360"/>
+    <line x1="148" y1="138" x2="364" y2="138"/>
+    <line x1="168" y1="360" x2="344" y2="360"/>
+  </g>
+
+  <!-- Graph nodes -->
+  <g filter="url(#glow)">
+    <!-- Center node (larger) -->
+    <circle cx="256" cy="230" r="18" fill="url(#accent)"/>
+    <!-- Outer nodes -->
+    <circle cx="148" cy="138" r="12" fill="#38bdf8"/>
+    <circle cx="364" cy="138" r="12" fill="#818cf8"/>
+    <circle cx="128" cy="270" r="11" fill="#38bdf8"/>
+    <circle cx="384" cy="270" r="11" fill="#818cf8"/>
+    <circle cx="168" cy="360" r="10" fill="#38bdf8"/>
+    <circle cx="344" cy="360" r="10" fill="#818cf8"/>
+  </g>
+
+  <!-- Code bracket hints on center node -->
+  <text x="244" y="237" font-family="monospace" font-size="22" font-weight="bold" fill="#0f172a">&lt;/&gt;</text>
+
+  <!-- Text -->
+  <text x="256" y="432" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="52" font-weight="700" letter-spacing="3" fill="white">ArchGraph</text>
+  <text x="256" y="462" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="16" font-weight="400" letter-spacing="2" fill="#94a3b8">CODE KNOWLEDGE GRAPH</text>
+</svg>

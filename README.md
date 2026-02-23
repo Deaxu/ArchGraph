@@ -1,11 +1,18 @@
-# ArchGraph
+<p align="center">
+  <img src="assets/banner.svg" alt="ArchGraph" width="700"/>
+</p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
+</p>
 
-Source code graph extraction and Cypher query tool for reverse engineering.
+<p align="center">
+  Source code graph extraction and Cypher query tool for reverse engineering.<br/>
+  Parses <b>10 languages</b>, builds a <b>Neo4j</b> knowledge graph with CFG, data flow, taint analysis, and CVE enrichment.
+</p>
 
-ArchGraph parses source code across **10 languages**, extracts structural and semantic relationships, and stores them in a **Neo4j** graph database. It provides deep analysis capabilities including control flow graphs, data flow tracking, taint analysis, and CVE enrichment for security auditing.
+---
 
 ## Highlights
 
