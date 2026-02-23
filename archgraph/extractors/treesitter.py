@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import importlib
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +158,7 @@ class TreeSitterExtractor(BaseExtractor):
         self._languages = languages or ["c", "cpp", "rust", "java", "go"]
         self._parsers: dict[str, ts.Parser] = {}
         self._ts_languages: dict[str, ts.Language] = {}
+        self._thread_local = threading.local()
         self._init_parsers()
 
     def _init_parsers(self) -> None:
@@ -176,21 +179,84 @@ class TreeSitterExtractor(BaseExtractor):
             except (ImportError, Exception) as e:
                 logger.warning("Could not load tree-sitter grammar for %s: %s", lang, e)
 
+    def _get_thread_parser(self, lang: str) -> ts.Parser:
+        """Get a thread-local parser for the given language."""
+        parsers = getattr(self._thread_local, "parsers", None)
+        if parsers is None:
+            parsers = {}
+            self._thread_local.parsers = parsers
+        if lang not in parsers:
+            ts_lang = self._ts_languages[lang]
+            parsers[lang] = ts.Parser(ts_lang)
+        return parsers[lang]
+
     def extract(self, repo_path: Path, **kwargs: object) -> GraphData:
         """Extract graph from all supported source files in the repo."""
-        graph = GraphData()
+        workers = kwargs.get("workers", 1)
         files = self._collect_files(repo_path)
         logger.info("Found %d source files to parse", len(files))
 
-        for file_path in files:
-            lang = self._detect_language(file_path)
-            if lang not in self._parsers:
-                continue
+        file_langs = [
+            (f, self._detect_language(f))
+            for f in files
+            if self._detect_language(f) in self._parsers
+        ]
+
+        if workers and workers > 1 and len(file_langs) > 1:
+            return self._extract_parallel(file_langs, repo_path, workers)
+
+        graph = GraphData()
+        for file_path, lang in file_langs:
             try:
                 self._extract_file(file_path, lang, repo_path, graph)
             except Exception:
                 logger.exception("Error extracting %s", file_path)
+        return graph
 
+    def _extract_parallel(
+        self, file_langs: list[tuple[Path, str]], repo_path: Path, workers: int
+    ) -> GraphData:
+        """Parse files in parallel using ThreadPoolExecutor."""
+        graph = GraphData()
+
+        def _process(args: tuple[Path, str]) -> GraphData:
+            fpath, lang = args
+            return self._extract_file_to_graph(fpath, lang, repo_path)
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for sub_graph in pool.map(_process, file_langs):
+                graph.merge(sub_graph)
+
+        return graph
+
+    def _extract_file_to_graph(
+        self, file_path: Path, lang: str, repo_path: Path
+    ) -> GraphData:
+        """Parse a single file and return its own GraphData (thread-safe)."""
+        graph = GraphData()
+        try:
+            source = file_path.read_bytes()
+            rel_path = str(file_path.relative_to(repo_path))
+            parser = self._get_thread_parser(lang)
+            tree = parser.parse(source)
+            root = tree.root_node
+
+            lines = source.count(b"\n") + 1
+            file_id = f"file:{rel_path}"
+            graph.add_node(
+                file_id,
+                NodeLabel.FILE,
+                path=rel_path,
+                language=lang,
+                size=len(source),
+                hash=_file_hash(file_path),
+                lines=lines,
+            )
+
+            lang_types = _LANG_NODE_TYPES.get(lang, {})
+            self._walk_tree(root, source, lang, lang_types, file_id, rel_path, graph)
+        except Exception:
+            logger.exception("Error extracting %s", file_path)
         return graph
 
     def _collect_files(self, repo_path: Path) -> list[Path]:

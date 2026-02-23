@@ -9,6 +9,8 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import tree_sitter as ts
@@ -44,7 +46,9 @@ class TreeSitterDeepExtractor(BaseExtractor):
     def __init__(self, languages: list[str] | None = None) -> None:
         self._requested = languages
         self._parsers: dict[str, ts.Parser] = {}
+        self._ts_languages: dict[str, ts.Language] = {}
         self._specs: dict[str, LangSpec] = {}
+        self._thread_local = threading.local()
         self._init_parsers()
 
     def _init_parsers(self) -> None:
@@ -57,10 +61,22 @@ class TreeSitterDeepExtractor(BaseExtractor):
                 ts_lang = ts.Language(mod.language())
                 parser = ts.Parser(ts_lang)
                 self._parsers[lang] = parser
+                self._ts_languages[lang] = ts_lang
                 self._specs[lang] = spec
                 logger.debug("Deep analysis parser initialized for %s", lang)
             except (ImportError, Exception) as e:
                 logger.debug("Skipping deep analysis for %s: %s", lang, e)
+
+    def _get_thread_parser(self, lang: str) -> ts.Parser:
+        """Get a thread-local parser for the given language."""
+        parsers = getattr(self._thread_local, "parsers", None)
+        if parsers is None:
+            parsers = {}
+            self._thread_local.parsers = parsers
+        if lang not in parsers:
+            ts_lang = self._ts_languages[lang]
+            parsers[lang] = ts.Parser(ts_lang)
+        return parsers[lang]
 
     @property
     def available_languages(self) -> list[str]:
@@ -69,6 +85,7 @@ class TreeSitterDeepExtractor(BaseExtractor):
 
     def extract(self, repo_path: Path, **kwargs: object) -> GraphData:
         """Extract deep analysis data from supported source files."""
+        workers = kwargs.get("workers", 1)
         graph = GraphData()
         repo = repo_path.resolve()
 
@@ -87,12 +104,50 @@ class TreeSitterDeepExtractor(BaseExtractor):
             ", ".join(self.available_languages),
         )
 
+        if workers and workers > 1 and len(files) > 1:
+            return self._extract_parallel(files, repo, workers)
+
         for fpath, lang in files:
             try:
                 self._analyze_file(fpath, lang, repo, graph)
             except Exception:
                 logger.debug("Deep analysis failed for %s", fpath, exc_info=True)
 
+        return graph
+
+    def _extract_parallel(
+        self, files: list[tuple[Path, str]], repo: Path, workers: int
+    ) -> GraphData:
+        """Analyze files in parallel using ThreadPoolExecutor."""
+        graph = GraphData()
+
+        def _process(args: tuple[Path, str]) -> GraphData:
+            fpath, lang = args
+            return self._analyze_file_to_graph(fpath, lang, repo)
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for sub_graph in pool.map(_process, files):
+                graph.merge(sub_graph)
+
+        return graph
+
+    def _analyze_file_to_graph(
+        self, fpath: Path, lang: str, repo: Path
+    ) -> GraphData:
+        """Analyze a single file and return its own GraphData (thread-safe)."""
+        graph = GraphData()
+        try:
+            source = fpath.read_bytes()
+            rel_path = (
+                str(fpath.relative_to(repo)) if fpath.is_relative_to(repo) else str(fpath)
+            )
+            parser = self._get_thread_parser(lang)
+            spec = self._specs[lang]
+            tree = parser.parse(source)
+            root = tree.root_node
+            self._walk_for_functions(root, spec, source, rel_path, graph)
+        except Exception:
+            logger.debug("Deep analysis failed for %s", fpath, exc_info=True)
         return graph
 
     def _collect_files(self, repo: Path) -> list[tuple[Path, str]]:

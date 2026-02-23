@@ -146,15 +146,36 @@ Durum ikonları: done, partial, planned, deferred
 
 ---
 
+## Faz 4: Performans Optimizasyonu + CVE Enrichment — DONE
+
+### Adım 18: Performans — Pipeline ve file-level paralelizasyon — DONE
+- [x] `config.py` — `workers`, `include_cve`, `osv_batch_size` alanları + `SOURCE_TO_OSV_ECOSYSTEM` sabiti
+- [x] `treesitter.py` — `threading.local()` thread-başına parser + `ThreadPoolExecutor` ile paralel parse
+- [x] `clang.py` — Her thread kendi `Index.create()` + paralel analiz
+- [x] `deep/__init__.py` — Thread-local parser + paralel analiz
+- [x] `dependencies.py` — 10 ayrı `rglob()` → tek `os.walk()` traversal
+- [x] `builder.py` — Paralel pipeline: Grup A (ts/git/deps/ann concurrent), Step 5 (labeling), Grup C (clang/deep concurrent), Step 8 (churn), Step 9 (CVE)
+- [x] `builder.py` — `_resolve_workers()`: workers=0 → `min(cpu_count, 8)`, workers=1 → sequential
+- [x] `cli.py` — `--workers/-w` ve `--include-cve/--no-cve` flag'leri
+
+### Adım 19: CVE Enrichment — OSV API entegrasyonu — DONE
+- [x] `schema.py` — `NodeLabel.VULNERABILITY`, `EdgeType.AFFECTED_BY`
+- [x] `enrichment/cve.py` — `CveEnricher.enrich(graph)` (OSV batch query, Vulnerability node + AFFECTED_BY edge)
+- [x] `enrichment/cve.py` — Version temizleme (^, ~, >=, v prefix kaldır)
+- [x] `enrichment/cve.py` — Network hatasında graceful skip
+- [x] `neo4j_store.py` — Vulnerability index (vuln_id)
+- [x] `archgraph_tool.py` — `_DESCRIPTION`'a Vulnerability node + AFFECTED_BY edge + `find_vulnerabilities()` metodu
+
+### Adım 20: Testler — DONE
+- [x] `test_cve.py` — 8 test (no deps, no version, unsupported ecosystem, successful enrichment, no vulns, network error, clean version, multiple deps batch)
+- [x] `test_builder.py` — `test_pipeline_parallel`: workers=1 vs workers=4 aynı sonucu üretir
+- [x] Toplam: 102 test (98 passed + 4 skipped)
+
+---
+
 ## Gelecek İyileştirmeler — DEFERRED
 
-### CVE Enrichment
-- [ ] Dependency→CVE eşleştirme (NVD/OSV API)
-- [ ] API rate limit yönetimi
-- [ ] CVE node tipi ve AFFECTED_BY edge'i
-
-### Performans
-- [ ] Paralel file parse (multiprocessing/asyncio)
+### Performans (ileri)
 - [ ] Incremental extraction (sadece değişen dosyalar)
 - [ ] Neo4j APOC batch import kullanımı
 

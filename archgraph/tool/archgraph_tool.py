@@ -50,6 +50,7 @@ has_force_unwrap, has_goroutine, has_channel_op, has_defer
 - **Tag**: name, commit_hash, date (release tags)
 - **SecurityFix**: description, commit_hash
 - **Dependency**: name, version, manager
+- **Vulnerability**: vuln_id, summary, severity, aliases (CVE/GHSA/PYSEC from OSV)
 - **Annotation**: type (TODO/HACK/FIXME/UNSAFE/BUG/SECURITY/...), text, line
 
 ## Edge Types & Properties
@@ -73,6 +74,7 @@ has_force_unwrap, has_goroutine, has_channel_op, has_defer
 - **FIXED_BY**: SecurityFix → Commit
 - **AFFECTS**: SecurityFix → File
 - **HAS_ANNOTATION**: File → Annotation
+- **AFFECTED_BY**: Dependency → Vulnerability
 
 ## ID Format
 
@@ -158,6 +160,28 @@ class ArchGraphTool(BaseTool):
         """
         self._ensure_connected()
         return self._store.query(cypher, params)
+
+
+    def find_vulnerabilities(
+        self, severity: str | None = None
+    ) -> list[dict[str, Any]]:
+        """Find known vulnerabilities affecting project dependencies.
+
+        Args:
+            severity: Optional severity filter substring (e.g. "CRITICAL", "HIGH").
+
+        Returns:
+            List of dicts with dependency name, vuln_id, summary, severity.
+        """
+        cypher = (
+            "MATCH (d:Dependency)-[:AFFECTED_BY]->(v:Vulnerability) "
+            "RETURN d.name AS dependency, d.version AS version, "
+            "v.vuln_id AS vuln_id, v.summary AS summary, v.severity AS severity"
+        )
+        results = self.query(cypher)
+        if severity:
+            results = [r for r in results if severity.upper() in (r.get("severity") or "").upper()]
+        return results
 
 
 def create_tool(**kwargs: Any) -> ArchGraphTool:

@@ -266,3 +266,32 @@ def test_pipeline_without_git(tmp_path):
     assert graph.node_count > 0
     file_nodes = [n for n in graph.nodes if n.label == NodeLabel.FILE]
     assert len(file_nodes) == 1
+
+
+def test_pipeline_parallel(sample_c_project):
+    """Parallel and sequential pipelines should produce equivalent results."""
+    base_kwargs = dict(
+        repo_path=sample_c_project,
+        languages=["c"],
+        include_git=True,
+        include_deps=True,
+        include_annotations=True,
+        include_security_labels=True,
+    )
+
+    config_seq = ExtractConfig(**base_kwargs, workers=1)
+    config_par = ExtractConfig(**base_kwargs, workers=4)
+
+    graph_seq = GraphBuilder(config_seq).build()
+    graph_par = GraphBuilder(config_par).build()
+
+    seq_stats = graph_seq.stats()
+    par_stats = graph_par.stats()
+
+    # Same node labels should be present
+    assert set(seq_stats["nodes"].keys()) == set(par_stats["nodes"].keys())
+    # Same edge types should be present
+    assert set(seq_stats["edges"].keys()) == set(par_stats["edges"].keys())
+    # Same total counts
+    assert graph_seq.node_count == graph_par.node_count
+    assert graph_seq.edge_count == graph_par.edge_count

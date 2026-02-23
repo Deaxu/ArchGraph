@@ -131,6 +131,7 @@ class NodeLabel:
     ANNOTATION = "Annotation"
     BUILD_CONFIG = "BuildConfig"
     BASIC_BLOCK = "BasicBlock"
+    VULNERABILITY = "Vulnerability"
 
 
 class EdgeType:
@@ -159,3 +160,5 @@ class EdgeType:
     DATA_FLOWS_TO = "DATA_FLOWS_TO"
     TAINTS = "TAINTS"
     BRANCHES_TO = "BRANCHES_TO"
+    # CVE enrichment
+    AFFECTED_BY = "AFFECTED_BY"

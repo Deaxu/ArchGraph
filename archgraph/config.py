@@ -157,6 +157,21 @@ SKIP_FILES = frozenset({
 # Neo4j batch sizes
 NEO4J_BATCH_SIZE = 5000
 
+# OSV API settings
+OSV_API_URL = "https://api.osv.dev/v1/querybatch"
+OSV_QUERY_TIMEOUT = 30  # seconds
+
+# Map dependency source file → OSV ecosystem name
+SOURCE_TO_OSV_ECOSYSTEM: dict[str, str] = {
+    "Cargo.toml": "crates.io",
+    "package.json": "npm",
+    "go.mod": "Go",
+    "gradle": "Maven",
+    "Podfile": "CocoaPods",
+    "conanfile.txt": "ConanCenter",
+    "Package.swift": "SwiftURL",
+}
+
 
 @dataclass
 class ExtractConfig:
@@ -178,3 +193,6 @@ class ExtractConfig:
     clang_compile_commands: Path | None = None
     clang_extra_args: list[str] = field(default_factory=list)
     include_deep: bool = False
+    workers: int = 0  # 0=auto (min(cpu_count, 8)), 1=sequential
+    include_cve: bool = False
+    osv_batch_size: int = 1000

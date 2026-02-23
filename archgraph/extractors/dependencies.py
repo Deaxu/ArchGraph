@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from pathlib import Path
 from typing import Any
@@ -31,35 +32,43 @@ class DependencyExtractor(BaseExtractor):
         "Package.swift": "_parse_swift_package",
     }
 
+    # Directories to skip during manifest collection
+    _SKIP_DIRS = frozenset({"vendor", "third_party", "node_modules", ".git", "__pycache__"})
+
     def extract(self, repo_path: Path, **kwargs: object) -> GraphData:
         graph = GraphData()
 
-        for filename, method_name in self._PARSERS.items():
-            for manifest in repo_path.rglob(filename):
-                # Skip vendored / third_party directories
+        # Single os.walk traversal to collect all manifests
+        manifests: list[tuple[Path, str, str]] = []  # (path, filename, method_name)
+        for root, dirs, filenames in os.walk(repo_path):
+            dirs[:] = [d for d in dirs if d not in self._SKIP_DIRS]
+            for fname in filenames:
+                method_name = self._PARSERS.get(fname)
+                if method_name:
+                    manifests.append((Path(root) / fname, fname, method_name))
+
+        for manifest, filename, method_name in manifests:
+            try:
                 rel = manifest.relative_to(repo_path)
-                if any(p in rel.parts for p in ("vendor", "third_party", "node_modules")):
-                    continue
-                try:
-                    method = getattr(self, method_name)
-                    deps = method(manifest)
-                    module_name = str(rel.parent) if str(rel.parent) != "." else filename
-                    module_id = f"module:{module_name}"
-                    graph.add_node(module_id, NodeLabel.MODULE, name=module_name, path=str(rel))
+                method = getattr(self, method_name)
+                deps = method(manifest)
+                module_name = str(rel.parent) if str(rel.parent) != "." else filename
+                module_id = f"module:{module_name}"
+                graph.add_node(module_id, NodeLabel.MODULE, name=module_name, path=str(rel))
 
-                    for dep in deps:
-                        dep_id = f"dep:{dep['name']}"
-                        graph.add_node(
-                            dep_id,
-                            NodeLabel.DEPENDENCY,
-                            name=dep["name"],
-                            version=dep.get("version", ""),
-                            source=dep.get("source", filename),
-                        )
-                        graph.add_edge(module_id, dep_id, EdgeType.DEPENDS_ON)
+                for dep in deps:
+                    dep_id = f"dep:{dep['name']}"
+                    graph.add_node(
+                        dep_id,
+                        NodeLabel.DEPENDENCY,
+                        name=dep["name"],
+                        version=dep.get("version", ""),
+                        source=dep.get("source", filename),
+                    )
+                    graph.add_edge(module_id, dep_id, EdgeType.DEPENDS_ON)
 
-                except Exception:
-                    logger.exception("Error parsing %s", manifest)
+            except Exception:
+                logger.exception("Error parsing %s", manifest)
 
         return graph
 

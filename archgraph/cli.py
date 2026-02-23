@@ -90,6 +90,11 @@ def main() -> None:
     "--compile-commands", type=click.Path(exists=True, path_type=Path), default=None,
     help="Path to compile_commands.json for clang analysis",
 )
+@click.option(
+    "--workers", "-w", type=int, default=0,
+    help="Number of worker threads (0=auto, 1=sequential)",
+)
+@click.option("--include-cve/--no-cve", default=False, help="Enable CVE enrichment via OSV API")
 @click.option("--clear-db/--no-clear-db", default=False, help="Clear database before import")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 def extract(
@@ -107,6 +112,8 @@ def extract(
     include_clang: bool,
     include_deep: bool,
     compile_commands: Path | None,
+    workers: int,
+    include_cve: bool,
     clear_db: bool,
     verbose: bool,
 ) -> None:
@@ -141,6 +148,8 @@ def extract(
         include_clang=include_clang,
         clang_compile_commands=compile_commands,
         include_deep=include_deep,
+        workers=workers,
+        include_cve=include_cve,
     )
 
         console.print(

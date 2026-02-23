@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -113,6 +114,7 @@ class ClangExtractor(BaseExtractor):
             logger.warning("Clang extractor not available — skipping deep analysis")
             return GraphData()
 
+        workers = kwargs.get("workers", 1)
         graph = GraphData()
         repo = repo_path.resolve()
 
@@ -126,12 +128,39 @@ class ClangExtractor(BaseExtractor):
 
         logger.info("Clang deep analysis: %d C/C++ files", len(files))
 
+        if workers and workers > 1 and len(files) > 1:
+            return self._extract_parallel(files, repo, workers)
+
         for fpath in files:
             try:
                 self._analyze_file(fpath, repo, graph)
             except Exception:
                 logger.debug("Clang analysis failed for %s", fpath, exc_info=True)
 
+        return graph
+
+    def _extract_parallel(
+        self, files: list[Path], repo: Path, workers: int
+    ) -> GraphData:
+        """Analyze files in parallel. Each thread creates its own Index."""
+        graph = GraphData()
+
+        def _process(fpath: Path) -> GraphData:
+            return self._analyze_file_to_graph(fpath, repo)
+
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for sub_graph in pool.map(_process, files):
+                graph.merge(sub_graph)
+
+        return graph
+
+    def _analyze_file_to_graph(self, fpath: Path, repo: Path) -> GraphData:
+        """Analyze a single file and return its own GraphData (thread-safe)."""
+        graph = GraphData()
+        try:
+            self._analyze_file(fpath, repo, graph)
+        except Exception:
+            logger.debug("Clang analysis failed for %s", fpath, exc_info=True)
         return graph
 
     # ── File collection ──────────────────────────────────────────────────
