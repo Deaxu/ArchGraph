@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="800" height="200">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 200" width="820" height="200">
   <defs>
     <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#0f172a"/>
@@ -9,11 +9,18 @@
       <stop offset="100%" stop-color="#818cf8"/>
     </linearGradient>
     <linearGradient id="edge" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#818cf8" stop-opacity="0.5"/>
+      <stop offset="0%" stop-color="#38bdf8" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#818cf8" stop-opacity="0.45"/>
     </linearGradient>
     <filter id="glow">
-      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="nodeGlow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
@@ -22,56 +29,75 @@
   </defs>
 
   <!-- Background -->
-  <rect width="800" height="200" rx="16" fill="url(#bg)"/>
+  <rect width="820" height="200" rx="16" fill="url(#bg)"/>
 
-  <!-- Graph edges (left side) -->
-  <g stroke="url(#edge)" stroke-width="2" fill="none" filter="url(#glow)">
-    <line x1="130" y1="100" x2="60" y2="50"/>
-    <line x1="130" y1="100" x2="200" y2="50"/>
-    <line x1="130" y1="100" x2="45" y2="110"/>
-    <line x1="130" y1="100" x2="215" y2="110"/>
-    <line x1="130" y1="100" x2="70" y2="160"/>
-    <line x1="130" y1="100" x2="190" y2="160"/>
-    <line x1="60" y1="50" x2="45" y2="110"/>
-    <line x1="200" y1="50" x2="215" y2="110"/>
-    <line x1="45" y1="110" x2="70" y2="160"/>
-    <line x1="215" y1="110" x2="190" y2="160"/>
-    <line x1="60" y1="50" x2="200" y2="50"/>
-    <line x1="70" y1="160" x2="190" y2="160"/>
+  <!-- Subtle grid dots -->
+  <g fill="#ffffff" opacity="0.03">
+    <circle cx="40" cy="40" r="1"/><circle cx="80" cy="40" r="1"/><circle cx="120" cy="40" r="1"/><circle cx="160" cy="40" r="1"/><circle cx="200" cy="40" r="1"/>
+    <circle cx="40" cy="80" r="1"/><circle cx="80" cy="80" r="1"/><circle cx="160" cy="80" r="1"/><circle cx="200" cy="80" r="1"/>
+    <circle cx="40" cy="120" r="1"/><circle cx="80" cy="120" r="1"/><circle cx="160" cy="120" r="1"/><circle cx="200" cy="120" r="1"/>
+    <circle cx="40" cy="160" r="1"/><circle cx="80" cy="160" r="1"/><circle cx="120" cy="160" r="1"/><circle cx="160" cy="160" r="1"/><circle cx="200" cy="160" r="1"/>
   </g>
 
-  <!-- Graph nodes -->
-  <g filter="url(#glow)">
-    <circle cx="130" cy="100" r="14" fill="url(#accent)"/>
-    <circle cx="60" cy="50" r="8" fill="#38bdf8"/>
-    <circle cx="200" cy="50" r="8" fill="#818cf8"/>
-    <circle cx="45" cy="110" r="7" fill="#38bdf8"/>
-    <circle cx="215" cy="110" r="7" fill="#818cf8"/>
-    <circle cx="70" cy="160" r="7" fill="#38bdf8"/>
-    <circle cx="190" cy="160" r="7" fill="#818cf8"/>
+  <!-- Graph edges — cleaner hexagonal layout -->
+  <g stroke="url(#edge)" stroke-width="1.8" fill="none" filter="url(#glow)">
+    <!-- Center to ring -->
+    <line x1="130" y1="100" x2="130" y2="40"/>
+    <line x1="130" y1="100" x2="182" y2="70"/>
+    <line x1="130" y1="100" x2="182" y2="130"/>
+    <line x1="130" y1="100" x2="130" y2="160"/>
+    <line x1="130" y1="100" x2="78" y2="130"/>
+    <line x1="130" y1="100" x2="78" y2="70"/>
+    <!-- Ring connections -->
+    <line x1="130" y1="40" x2="182" y2="70"/>
+    <line x1="182" y1="70" x2="182" y2="130"/>
+    <line x1="182" y1="130" x2="130" y2="160"/>
+    <line x1="130" y1="160" x2="78" y2="130"/>
+    <line x1="78" y1="130" x2="78" y2="70"/>
+    <line x1="78" y1="70" x2="130" y2="40"/>
   </g>
 
-  <!-- Code bracket on center node -->
-  <text x="119" y="106" font-family="monospace" font-size="16" font-weight="bold" fill="#0f172a">&lt;/&gt;</text>
+  <!-- Graph nodes — clean symmetric hex -->
+  <g filter="url(#nodeGlow)">
+    <!-- Ring nodes -->
+    <circle cx="130" cy="40" r="7" fill="#38bdf8"/>
+    <circle cx="182" cy="70" r="7" fill="#818cf8"/>
+    <circle cx="182" cy="130" r="7" fill="#38bdf8"/>
+    <circle cx="130" cy="160" r="7" fill="#818cf8"/>
+    <circle cx="78" cy="130" r="7" fill="#38bdf8"/>
+    <circle cx="78" cy="70" r="7" fill="#818cf8"/>
+    <!-- Center node (larger, brighter) -->
+    <circle cx="130" cy="100" r="16" fill="url(#accent)"/>
+    <circle cx="130" cy="100" r="16" fill="none" stroke="white" stroke-opacity="0.15" stroke-width="1"/>
+  </g>
+
+  <!-- Code symbol on center node — white for contrast -->
+  <text x="130" y="105" text-anchor="middle" font-family="'SF Mono', 'Fira Code', monospace" font-size="13" font-weight="700" fill="white" opacity="0.9">&lt;/&gt;</text>
+
+  <!-- Divider line -->
+  <line x1="260" y1="40" x2="260" y2="160" stroke="#334155" stroke-width="1"/>
 
   <!-- Title -->
-  <text x="340" y="95" font-family="system-ui, -apple-system, sans-serif" font-size="56" font-weight="700" letter-spacing="2" fill="white">ArchGraph</text>
+  <text x="300" y="90" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="52" font-weight="700" letter-spacing="1" fill="white">ArchGraph</text>
 
   <!-- Subtitle -->
-  <text x="342" y="130" font-family="system-ui, -apple-system, sans-serif" font-size="17" font-weight="400" letter-spacing="1.5" fill="#94a3b8">Source code knowledge graph for reverse engineering</text>
+  <text x="302" y="122" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="15" font-weight="400" letter-spacing="0.5" fill="#94a3b8">Source code knowledge graph for reverse engineering</text>
 
-  <!-- Badge-like pills -->
-  <g font-family="system-ui, -apple-system, sans-serif" font-size="11" font-weight="500">
-    <rect x="342" y="148" width="82" height="22" rx="11" fill="#38bdf820" stroke="#38bdf8" stroke-width="1"/>
-    <text x="383" y="163" text-anchor="middle" fill="#38bdf8">10 Languages</text>
+  <!-- Badge pills — evenly spaced -->
+  <g font-family="system-ui, -apple-system, 'Segoe UI', sans-serif" font-size="11" font-weight="500">
+    <rect x="302" y="140" width="84" height="22" rx="11" fill="#38bdf815" stroke="#38bdf8" stroke-opacity="0.5" stroke-width="0.8"/>
+    <text x="344" y="155" text-anchor="middle" fill="#38bdf8">10 Languages</text>
 
-    <rect x="434" y="148" width="68" height="22" rx="11" fill="#818cf820" stroke="#818cf8" stroke-width="1"/>
-    <text x="468" y="163" text-anchor="middle" fill="#818cf8">Neo4j</text>
+    <rect x="396" y="140" width="56" height="22" rx="11" fill="#818cf815" stroke="#818cf8" stroke-opacity="0.5" stroke-width="0.8"/>
+    <text x="424" y="155" text-anchor="middle" fill="#818cf8">Neo4j</text>
 
-    <rect x="512" y="148" width="90" height="22" rx="11" fill="#38bdf820" stroke="#38bdf8" stroke-width="1"/>
-    <text x="557" y="163" text-anchor="middle" fill="#38bdf8">Taint Analysis</text>
+    <rect x="462" y="140" width="94" height="22" rx="11" fill="#38bdf815" stroke="#38bdf8" stroke-opacity="0.5" stroke-width="0.8"/>
+    <text x="509" y="155" text-anchor="middle" fill="#38bdf8">Taint Analysis</text>
 
-    <rect x="612" y="148" width="53" height="22" rx="11" fill="#818cf820" stroke="#818cf8" stroke-width="1"/>
-    <text x="638" y="163" text-anchor="middle" fill="#818cf8">CVE</text>
+    <rect x="566" y="140" width="46" height="22" rx="11" fill="#818cf815" stroke="#818cf8" stroke-opacity="0.5" stroke-width="0.8"/>
+    <text x="589" y="155" text-anchor="middle" fill="#818cf8">CVE</text>
+
+    <rect x="622" y="140" width="62" height="22" rx="11" fill="#38bdf815" stroke="#38bdf8" stroke-opacity="0.5" stroke-width="0.8"/>
+    <text x="653" y="155" text-anchor="middle" fill="#38bdf8">Parallel</text>
   </g>
 </svg>
