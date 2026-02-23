@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(archgraph --help:*)",
+      "WebSearch",
+      "WebFetch(domain:libclang.readthedocs.io)",
+      "WebFetch(domain:eli.thegreenplace.net)",
+      "Bash(wc -l:*)",
+      "Bash(pytest:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

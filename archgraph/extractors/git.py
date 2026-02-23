@@ -38,6 +38,7 @@ class GitExtractor(BaseExtractor):
 
     def extract(self, repo_path: Path, **kwargs: object) -> GraphData:
         graph = GraphData()
+        since_commit: str | None = kwargs.get("since_commit", None)  # type: ignore[assignment]
 
         # Check if repo has git
         git_dir = repo_path / ".git"
@@ -45,22 +46,26 @@ class GitExtractor(BaseExtractor):
             logger.info("No .git directory found, skipping git extraction")
             return graph
 
-        self._extract_commits(repo_path, graph)
+        self._extract_commits(repo_path, graph, since_commit=since_commit)
         self._extract_tags(repo_path, graph)
 
         return graph
 
-    def _extract_commits(self, repo_path: Path, graph: GraphData) -> None:
+    def _extract_commits(
+        self, repo_path: Path, graph: GraphData, *, since_commit: str | None = None
+    ) -> None:
         """Extract commits with author and changed files."""
         # Format: hash|parent_hashes|author_name|author_email|date|subject
         log_format = "%H|%P|%aN|%aE|%aI|%s"
-        raw = _run_git(
-            repo_path,
+        cmd_args = [
             "log",
             f"--max-count={self._max_commits}",
             f"--format={log_format}",
             "--numstat",
-        )
+        ]
+        if since_commit:
+            cmd_args.append(f"{since_commit}..HEAD")
+        raw = _run_git(repo_path, *cmd_args)
         if not raw:
             return
 

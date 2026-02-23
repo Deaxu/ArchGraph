@@ -17,6 +17,16 @@ from archgraph.extractors.git import GitExtractor
 from archgraph.extractors.security_labels import SecurityLabeler
 from archgraph.extractors.treesitter import TreeSitterExtractor
 from archgraph.graph.schema import GraphData
+from archgraph.manifest import (
+    ChangeSet,
+    build_manifest_from_files,
+    compute_changeset,
+    compute_dependencies_hash,
+    get_git_head,
+    load_manifest,
+    save_manifest,
+    scan_current_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -35,12 +45,175 @@ class GraphBuilder:
         self.config = config
 
     def build(self) -> GraphData:
-        """Run the full extraction pipeline and return the combined graph."""
+        """Run the extraction pipeline and return the combined graph."""
         workers = _resolve_workers(self.config.workers)
 
+        if self.config.incremental:
+            return self._build_incremental(workers)
+
+        graph = self._build_full(workers)
+        # Save manifest after full build so next incremental can use it
+        self._save_current_manifest()
+        return graph
+
+    # ── Full build dispatch ────────────────────────────────────────────────
+
+    def _build_full(self, workers: int) -> GraphData:
         if workers > 1:
             return self._build_parallel(workers)
         return self._build_sequential()
+
+    # ── Incremental pipeline ───────────────────────────────────────────────
+
+    def _build_incremental(self, workers: int) -> GraphData:
+        """Incremental extraction — only re-extract changed files."""
+        repo = self.config.repo_path
+        old_manifest = load_manifest(repo)
+
+        if old_manifest is None:
+            logger.info("No previous manifest found, running full extraction")
+            graph = self._build_full(workers)
+            self._save_current_manifest()
+            return graph
+
+        # Scan current state
+        current_files = scan_current_files(repo)
+        current_head = get_git_head(repo)
+        current_deps_hash = compute_dependencies_hash(repo) if self.config.include_deps else ""
+
+        changeset = compute_changeset(
+            old_manifest, current_files,
+            current_git_head=current_head,
+            current_deps_hash=current_deps_hash,
+        )
+
+        if not changeset.has_changes and changeset.git_head_old == current_head:
+            logger.info("No changes detected, returning empty graph")
+            return GraphData()
+
+        # If git history diverged (old head not ancestor of new), fall back to full
+        if (
+            changeset.git_head_old
+            and current_head
+            and changeset.git_head_old != current_head
+            and not self._is_ancestor(repo, changeset.git_head_old, current_head)
+        ):
+            logger.info("Git history diverged, falling back to full extraction")
+            graph = self._build_full(workers)
+            self._save_current_manifest()
+            return graph
+
+        logger.info(
+            "Incremental: %d added, %d modified, %d deleted, deps_changed=%s",
+            len(changeset.added_files),
+            len(changeset.modified_files),
+            len(changeset.deleted_files),
+            changeset.deps_changed,
+        )
+
+        graph = self._run_incremental_steps(changeset, workers)
+
+        # Save updated manifest
+        self._save_current_manifest()
+        return graph
+
+    def _run_incremental_steps(self, changeset: ChangeSet, workers: int) -> GraphData:
+        """Execute incremental extraction steps based on the changeset."""
+        graph = GraphData()
+        repo = self.config.repo_path
+        changed = changeset.changed_files
+
+        # Step 1: Tree-sitter — only changed files
+        if changed:
+            logger.info("Incremental tree-sitter: %d files", len(changed))
+            ts_ext = TreeSitterExtractor(languages=self.config.languages)
+            ts_graph = ts_ext.extract(repo, workers=workers, changed_files=changed)
+            graph.merge(ts_graph)
+
+        # Step 2: Git — only new commits since old head
+        if self.config.include_git and changeset.git_head_old:
+            logger.info("Incremental git: since %s", changeset.git_head_old[:12])
+            git_ext = GitExtractor(max_commits=self.config.git_max_commits)
+            git_graph = git_ext.extract(repo, since_commit=changeset.git_head_old)
+            graph.merge(git_graph)
+
+        # Step 3: Dependencies — only if manifests changed
+        if self.config.include_deps and changeset.deps_changed:
+            logger.info("Incremental deps: manifest files changed")
+            dep_ext = DependencyExtractor()
+            dep_graph = dep_ext.extract(repo)
+            graph.merge(dep_graph)
+
+        # Step 4: Annotations — full scan (cheap operation)
+        if self.config.include_annotations and changed:
+            ann_ext = AnnotationExtractor()
+            ann_graph = ann_ext.extract(repo)
+            graph.merge(ann_graph)
+
+        # Step 5: Security labeling — on current graph
+        if self.config.include_security_labels:
+            labeler = SecurityLabeler()
+            labeler.label(graph)
+
+        # Step 6: Clang deep — changed files only
+        if self.config.include_clang and changed:
+            clang_ext = ClangExtractor(
+                compile_commands=self.config.clang_compile_commands,
+                extra_args=self.config.clang_extra_args,
+            )
+            if clang_ext.available:
+                clang_graph = clang_ext.extract(repo, workers=workers)
+                graph.merge(clang_graph)
+
+        # Step 7: Deep analysis — changed files only
+        if self.config.include_deep and changed:
+            from archgraph.extractors.deep import TreeSitterDeepExtractor
+
+            deep_ext = TreeSitterDeepExtractor(languages=self.config.languages)
+            if deep_ext.available_languages:
+                deep_graph = deep_ext.extract(repo, workers=workers)
+                graph.merge(deep_graph)
+
+        # Step 8: Churn enrichment
+        if self.config.include_git:
+            enricher = ChurnEnricher()
+            enricher.enrich(graph, repo)
+
+        # Step 9: CVE enrichment
+        if self.config.include_cve:
+            cve_enricher = CveEnricher(batch_size=self.config.osv_batch_size)
+            cve_enricher.enrich(graph)
+
+        graph.deduplicate()
+        logger.info(
+            "Incremental graph: %d nodes, %d edges",
+            graph.node_count, graph.edge_count,
+        )
+        return graph
+
+    def _save_current_manifest(self) -> None:
+        """Scan current files and save manifest."""
+        repo = self.config.repo_path
+        current_files = scan_current_files(repo)
+        git_head = get_git_head(repo)
+        deps_hash = compute_dependencies_hash(repo) if self.config.include_deps else ""
+        manifest = build_manifest_from_files(repo, current_files, git_head, deps_hash)
+        save_manifest(repo, manifest)
+
+    @staticmethod
+    def _is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool:
+        """Check if ancestor commit is an ancestor of descendant."""
+        import subprocess
+
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(repo), "merge-base", "--is-ancestor", ancestor, descendant],
+                capture_output=True,
+                timeout=10,
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
 
     # ── Sequential pipeline (workers=1) ─────────────────────────────────
 

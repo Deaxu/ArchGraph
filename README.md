@@ -20,9 +20,12 @@
 - **Deep analysis** — CFG, data flow, taint tracking via libclang (C/C++) and tree-sitter
 - **Security auditing** — Input/sink detection, taint propagation, unsafe patterns, CVE enrichment
 - **Git integration** — Commit history, per-file change stats, author mapping, security fix detection
+- **Incremental extraction** — Only re-extract changed files via manifest-based change detection
+- **APOC batch import** — Auto-detected APOC procedures for optimized Neo4j bulk import
+- **Graph diff** — Compare current repo state against stored graph (added/removed/modified nodes)
 - **Parallel pipeline** — ThreadPoolExecutor-based multi-threaded extraction
 - **CVE enrichment** — Automatic vulnerability detection via [OSV](https://osv.dev) API
-- **rlm-agent tool** — Single `query()` method with full schema embedded in description
+- **rlm-agent tool** — `query()`, `find_vulnerabilities()`, and `diff_summary()` methods
 
 ## Installation
 

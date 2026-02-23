@@ -1,6 +1,6 @@
 """Tests for graph schema data structures."""
 
-from archgraph.graph.schema import Node, Edge, GraphData, NodeLabel, EdgeType
+from archgraph.graph.schema import Node, Edge, GraphData, NodeLabel, EdgeType, GraphDiff, NodeChange
 
 
 def test_node_creation():
@@ -75,3 +75,110 @@ def test_graph_data_stats():
     assert stats["nodes"][NodeLabel.FUNCTION] == 2
     assert stats["edges"][EdgeType.CONTAINS] == 2
     assert stats["edges"][EdgeType.CALLS] == 1
+
+
+# ── Graph Diff Tests ─────────────────────────────────────────────────────────
+
+
+def test_diff_added_nodes():
+    old = GraphData()
+    old.add_node("f1", NodeLabel.FILE, path="a.c")
+
+    new = GraphData()
+    new.add_node("f1", NodeLabel.FILE, path="a.c")
+    new.add_node("f2", NodeLabel.FILE, path="b.c")
+
+    diff = old.diff(new)
+    assert len(diff.nodes_added) == 1
+    assert diff.nodes_added[0].id == "f2"
+    assert not diff.nodes_removed
+    assert diff.has_changes
+
+
+def test_diff_removed_nodes():
+    old = GraphData()
+    old.add_node("f1", NodeLabel.FILE, path="a.c")
+    old.add_node("f2", NodeLabel.FILE, path="b.c")
+
+    new = GraphData()
+    new.add_node("f1", NodeLabel.FILE, path="a.c")
+
+    diff = old.diff(new)
+    assert len(diff.nodes_removed) == 1
+    assert diff.nodes_removed[0].id == "f2"
+    assert not diff.nodes_added
+
+
+def test_diff_modified_nodes():
+    old = GraphData()
+    old.add_node("f1", NodeLabel.FILE, path="a.c", size=100)
+
+    new = GraphData()
+    new.add_node("f1", NodeLabel.FILE, path="a.c", size=200)
+
+    diff = old.diff(new)
+    assert len(diff.nodes_modified) == 1
+    change = diff.nodes_modified[0]
+    assert change.node_id == "f1"
+    assert change.changed_properties["size"] == (100, 200)
+    assert diff.has_changes
+
+
+def test_diff_edges_added_removed():
+    old = GraphData()
+    old.add_node("f1", NodeLabel.FILE, path="a.c")
+    old.add_node("fn1", NodeLabel.FUNCTION, name="main")
+    old.add_edge("f1", "fn1", EdgeType.CONTAINS)
+
+    new = GraphData()
+    new.add_node("f1", NodeLabel.FILE, path="a.c")
+    new.add_node("fn1", NodeLabel.FUNCTION, name="main")
+    new.add_node("fn2", NodeLabel.FUNCTION, name="helper")
+    new.add_edge("f1", "fn2", EdgeType.CONTAINS)
+
+    diff = old.diff(new)
+    assert len(diff.edges_added) == 1
+    assert diff.edges_added[0].target_id == "fn2"
+    assert len(diff.edges_removed) == 1
+    assert diff.edges_removed[0].target_id == "fn1"
+
+
+def test_diff_no_changes():
+    g = GraphData()
+    g.add_node("f1", NodeLabel.FILE, path="a.c")
+    g.add_edge("f1", "fn1", EdgeType.CONTAINS)
+
+    # Same graph
+    g2 = GraphData()
+    g2.add_node("f1", NodeLabel.FILE, path="a.c")
+    g2.add_edge("f1", "fn1", EdgeType.CONTAINS)
+
+    diff = g.diff(g2)
+    assert not diff.has_changes
+    assert diff.summary() == {
+        "nodes_added": 0,
+        "nodes_removed": 0,
+        "nodes_modified": 0,
+        "edges_added": 0,
+        "edges_removed": 0,
+    }
+
+
+def test_diff_summary_counts():
+    old = GraphData()
+    old.add_node("f1", NodeLabel.FILE, path="a.c")
+    old.add_node("f2", NodeLabel.FILE, path="b.c")
+    old.add_edge("f1", "f2", EdgeType.IMPORTS)
+
+    new = GraphData()
+    new.add_node("f1", NodeLabel.FILE, path="a.c", size=999)
+    new.add_node("f3", NodeLabel.FILE, path="c.c")
+
+    diff = old.diff(new)
+    s = diff.summary()
+    assert s["nodes_added"] == 1   # f3
+    assert s["nodes_removed"] == 1  # f2
+    assert s["nodes_modified"] == 1  # f1 (size changed)
+    assert s["edges_removed"] == 1  # f1→f2 IMPORTS
+    assert s["edges_added"] == 0
+

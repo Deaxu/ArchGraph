@@ -19,6 +19,7 @@ from rich.table import Table
 from archgraph.config import ExtractConfig
 from archgraph.graph.builder import GraphBuilder
 from archgraph.graph.neo4j_store import Neo4jStore
+from archgraph.manifest import delete_manifest
 
 console = Console()
 
@@ -99,6 +100,8 @@ def main() -> None:
     help="Number of worker threads (0=auto, 1=sequential)",
 )
 @click.option("--include-cve/--no-cve", default=False, help="Enable CVE enrichment via OSV API")
+@click.option("--incremental/--no-incremental", default=False,
+              help="Incremental extraction — only re-extract changed files")
 @click.option("--clear-db/--no-clear-db", default=False, help="Clear database before import")
 @click.option("--verbose", "-v", is_flag=True, help="Verbose output")
 def extract(
@@ -118,6 +121,7 @@ def extract(
     compile_commands: Path | None,
     workers: int,
     include_cve: bool,
+    incremental: bool,
     clear_db: bool,
     verbose: bool,
 ) -> None:
@@ -154,6 +158,7 @@ def extract(
         include_deep=include_deep,
         workers=workers,
         include_cve=include_cve,
+        incremental=incremental,
     )
 
         console.print(
@@ -187,6 +192,8 @@ def extract(
                 if clear_db:
                     console.print("[yellow]Clearing existing data...[/yellow]")
                     store.clear()
+                    delete_manifest(resolved_path)
+                    console.print("[yellow]Manifest cleared.[/yellow]")
 
                 store.create_indexes()
                 import_start = time.time()
@@ -306,6 +313,121 @@ def schema(
     except Exception as e:
         console.print(f"[red]Failed: {e}[/red]")
         sys.exit(1)
+
+
+@main.command()
+@click.argument("repo_path")
+@click.option(
+    "--languages", "-l",
+    default="c,cpp,rust,java,go",
+    help="Comma-separated list of languages to extract",
+)
+@click.option("--neo4j-uri", default="bolt://localhost:7687",
+              envvar="ARCHGRAPH_NEO4J_URI", help="Neo4j bolt URI")
+@click.option("--neo4j-user", default="neo4j",
+              envvar="ARCHGRAPH_NEO4J_USER", help="Neo4j username")
+@click.option("--neo4j-password", default="neo4j",
+              envvar="ARCHGRAPH_NEO4J_PASSWORD", help="Neo4j password")
+@click.option("--neo4j-database", default="neo4j",
+              envvar="ARCHGRAPH_NEO4J_DATABASE", help="Neo4j database name")
+@click.option("--verbose", "-v", is_flag=True, help="Verbose output")
+def diff(
+    repo_path: str,
+    languages: str,
+    neo4j_uri: str,
+    neo4j_user: str,
+    neo4j_password: str,
+    neo4j_database: str,
+    verbose: bool,
+) -> None:
+    """Show differences between the current repo state and the stored graph.
+
+    Extracts the current repo state and compares it with the graph stored
+    in Neo4j to show added, removed, and modified nodes/edges.
+    """
+    _setup_logging(verbose)
+
+    resolved_path = Path(repo_path)
+    if not resolved_path.is_dir():
+        console.print(f"[red]Not a directory: {repo_path}[/red]")
+        raise SystemExit(1)
+    resolved_path = resolved_path.resolve()
+
+    config = ExtractConfig(
+        repo_path=resolved_path,
+        languages=[l.strip() for l in languages.split(",")],
+        include_git=True,
+        include_deps=True,
+        include_annotations=True,
+        include_security_labels=True,
+    )
+
+    console.print(f"\n[bold]ArchGraph Diff[/bold] — [cyan]{resolved_path}[/cyan]\n")
+
+    # Step 1: Extract current state
+    console.print("[bold]Extracting current repo state...[/bold]")
+    builder = GraphBuilder(config)
+    current_graph = builder.build()
+    console.print(
+        f"  Current: {current_graph.node_count} nodes, {current_graph.edge_count} edges"
+    )
+
+    # Step 2: Load stored graph from Neo4j
+    console.print("[bold]Loading stored graph from Neo4j...[/bold]")
+    try:
+        with Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database) as store:
+            stored_graph = store.load_graph()
+    except Exception as e:
+        console.print(f"[red]Failed to load graph from Neo4j: {e}[/red]")
+        sys.exit(1)
+
+    console.print(
+        f"  Stored:  {stored_graph.node_count} nodes, {stored_graph.edge_count} edges"
+    )
+
+    # Step 3: Compute diff
+    graph_diff = stored_graph.diff(current_graph)
+
+    if not graph_diff.has_changes:
+        console.print("\n[green]No changes detected.[/green]")
+        return
+
+    # Step 4: Display results
+    summary = graph_diff.summary()
+    table = Table(title="Graph Diff Summary")
+    table.add_column("Change Type", style="cyan")
+    table.add_column("Count", justify="right", style="green")
+
+    for key, count in summary.items():
+        style = "green" if count == 0 else "yellow"
+        table.add_row(key.replace("_", " ").title(), f"[{style}]{count}[/{style}]")
+
+    console.print(table)
+
+    # Show details if there are changes
+    if graph_diff.nodes_added:
+        console.print(f"\n[green]+ Added Nodes ({len(graph_diff.nodes_added)}):[/green]")
+        for node in graph_diff.nodes_added[:20]:
+            console.print(f"  + [{node.label}] {node.id}")
+        if len(graph_diff.nodes_added) > 20:
+            console.print(f"  ... and {len(graph_diff.nodes_added) - 20} more")
+
+    if graph_diff.nodes_removed:
+        console.print(f"\n[red]- Removed Nodes ({len(graph_diff.nodes_removed)}):[/red]")
+        for node in graph_diff.nodes_removed[:20]:
+            console.print(f"  - [{node.label}] {node.id}")
+        if len(graph_diff.nodes_removed) > 20:
+            console.print(f"  ... and {len(graph_diff.nodes_removed) - 20} more")
+
+    if graph_diff.nodes_modified:
+        console.print(f"\n[yellow]~ Modified Nodes ({len(graph_diff.nodes_modified)}):[/yellow]")
+        for change in graph_diff.nodes_modified[:20]:
+            props = ", ".join(
+                f"{k}: {old}→{new}" for k, (old, new) in change.changed_properties.items()
+            )
+            console.print(f"  ~ [{change.label}] {change.node_id}: {props}")
+        if len(graph_diff.nodes_modified) > 20:
+            console.print(f"  ... and {len(graph_diff.nodes_modified) - 20} more")
 
 
 if __name__ == "__main__":

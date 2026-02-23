@@ -193,7 +193,8 @@ class TreeSitterExtractor(BaseExtractor):
     def extract(self, repo_path: Path, **kwargs: object) -> GraphData:
         """Extract graph from all supported source files in the repo."""
         workers = kwargs.get("workers", 1)
-        files = self._collect_files(repo_path)
+        changed_files: set[str] | None = kwargs.get("changed_files", None)  # type: ignore[assignment]
+        files = self._collect_files(repo_path, changed_files=changed_files)
         logger.info("Found %d source files to parse", len(files))
 
         file_langs = [
@@ -259,8 +260,14 @@ class TreeSitterExtractor(BaseExtractor):
             logger.exception("Error extracting %s", file_path)
         return graph
 
-    def _collect_files(self, repo_path: Path) -> list[Path]:
-        """Collect all source files, respecting skip lists."""
+    def _collect_files(
+        self, repo_path: Path, changed_files: set[str] | None = None
+    ) -> list[Path]:
+        """Collect all source files, respecting skip lists.
+
+        If *changed_files* is given, only include files whose repo-relative
+        path is in the set.
+        """
         files: list[Path] = []
         for path in repo_path.rglob("*"):
             if not path.is_file():
@@ -270,6 +277,10 @@ class TreeSitterExtractor(BaseExtractor):
             if path.name in SKIP_FILES:
                 continue
             if path.suffix in EXTENSION_MAP:
+                if changed_files is not None:
+                    rel = str(path.relative_to(repo_path))
+                    if rel not in changed_files:
+                        continue
                 files.append(path)
         return sorted(files)
 

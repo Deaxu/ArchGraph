@@ -78,6 +78,34 @@ class Neo4jStore:
     def _session(self) -> Session:
         return self.driver.session(database=self._database)
 
+    # ── APOC Detection ─────────────────────────────────────────────────────
+
+    def _detect_apoc(self) -> bool:
+        """Check if APOC procedures are available.
+
+        Returns True if APOC is installed, False otherwise.
+        Result is cached after the first call.
+        """
+        if hasattr(self, "_apoc_available"):
+            return self._apoc_available
+
+        try:
+            with self._session() as session:
+                result = session.run(
+                    "CALL apoc.help('periodic') YIELD name RETURN count(name) AS cnt"
+                )
+                record = result.single()
+                self._apoc_available = record is not None and record["cnt"] > 0
+        except Exception:
+            self._apoc_available = False
+
+        if self._apoc_available:
+            logger.info("APOC detected — using optimized batch import")
+        else:
+            logger.info("APOC not available — using standard UNWIND import")
+
+        return self._apoc_available
+
     def create_indexes(self) -> None:
         """Create indexes for common query patterns."""
         with self._session() as session:
@@ -102,7 +130,13 @@ class Neo4jStore:
             logger.info("Cleared all graph data")
 
     def import_graph(self, graph: GraphData) -> dict[str, int]:
-        """Bulk import nodes and edges into Neo4j. Returns counts."""
+        """Bulk import nodes and edges into Neo4j. Returns counts.
+
+        Automatically uses APOC procedures if available for better performance.
+        """
+        if self._detect_apoc():
+            return self._import_graph_apoc(graph)
+
         node_count = self._import_nodes(graph.nodes)
         edge_count = self._import_edges(graph.edges)
         return {"nodes_imported": node_count, "edges_imported": edge_count}
@@ -178,6 +212,160 @@ class Neo4jStore:
 
         logger.info("Imported %d edges total", total)
         return total
+
+    # ── APOC Import (optimized path) ───────────────────────────────────────
+
+    def _import_graph_apoc(self, graph: GraphData) -> dict[str, int]:
+        """Import graph using APOC procedures for better performance."""
+        node_count = self._import_nodes_apoc(graph.nodes)
+        edge_count = self._import_edges_apoc(graph.edges)
+        return {"nodes_imported": node_count, "edges_imported": edge_count}
+
+    def _import_nodes_apoc(self, nodes: list[Node]) -> int:
+        """APOC-based parallel node import."""
+        if not nodes:
+            return 0
+
+        by_label: dict[str, list[Node]] = {}
+        for node in nodes:
+            by_label.setdefault(node.label, []).append(node)
+
+        total = 0
+        with self._session() as session:
+            for label, label_nodes in by_label.items():
+                records = []
+                for node in label_nodes:
+                    props = dict(node.properties)
+                    props["_id"] = node.id
+                    records.append(props)
+
+                session.run(
+                    "CALL apoc.periodic.iterate("
+                    "  'UNWIND $records AS props RETURN props',"
+                    f"  'MERGE (n:{label} {{_id: props._id}}) SET n += props SET n:_Node',"
+                    "  {batchSize: 5000, parallel: true, params: {records: $records}}"
+                    ")",
+                    records=records,
+                )
+                total += len(label_nodes)
+                logger.debug("APOC imported %d %s nodes", len(label_nodes), label)
+
+        logger.info("APOC imported %d nodes total", total)
+        return total
+
+    def _import_edges_apoc(self, edges: list[Edge]) -> int:
+        """APOC-based edge import (sequential to avoid deadlocks)."""
+        if not edges:
+            return 0
+
+        by_type: dict[str, list[Edge]] = {}
+        for edge in edges:
+            by_type.setdefault(edge.type, []).append(edge)
+
+        total = 0
+        with self._session() as session:
+            for rel_type, type_edges in by_type.items():
+                records = []
+                for edge in type_edges:
+                    rec = dict(edge.properties)
+                    rec["_src"] = edge.source_id
+                    rec["_tgt"] = edge.target_id
+                    records.append(rec)
+
+                session.run(
+                    "CALL apoc.periodic.iterate("
+                    "  'UNWIND $records AS rec RETURN rec',"
+                    f"  'MATCH (a:_Node {{_id: rec._src}}) "
+                    f"MATCH (b:_Node {{_id: rec._tgt}}) "
+                    f"MERGE (a)-[r:{rel_type}]->(b) SET r += rec',"
+                    "  {batchSize: 5000, parallel: false, params: {records: $records}}"
+                    ")",
+                    records=records,
+                )
+                total += len(type_edges)
+                logger.debug("APOC imported %d %s edges", len(type_edges), rel_type)
+
+        logger.info("APOC imported %d edges total", total)
+        return total
+
+    def delete_file_subgraph(self, file_paths: list[str]) -> int:
+        """Delete File nodes and all descendants reachable via CONTAINS* edges.
+
+        Args:
+            file_paths: Repo-relative file paths (e.g. ["src/main.c"]).
+
+        Returns:
+            Number of deleted nodes.
+        """
+        if not file_paths:
+            return 0
+
+        file_ids = [f"file:{p}" for p in file_paths]
+        deleted = 0
+
+        with self._session() as session:
+            # First delete children reachable via variable-length CONTAINS path
+            result = session.run(
+                "UNWIND $ids AS fid "
+                "MATCH (f:_Node {_id: fid})-[:CONTAINS*]->(child) "
+                "DETACH DELETE child "
+                "RETURN count(child) AS cnt",
+                ids=file_ids,
+            )
+            record = result.single()
+            deleted += record["cnt"] if record else 0
+
+            # Then delete the file nodes themselves
+            result = session.run(
+                "UNWIND $ids AS fid "
+                "MATCH (f:_Node {_id: fid}) "
+                "DETACH DELETE f "
+                "RETURN count(f) AS cnt",
+                ids=file_ids,
+            )
+            record = result.single()
+            deleted += record["cnt"] if record else 0
+
+        logger.info("Deleted %d nodes for %d removed files", deleted, len(file_paths))
+        return deleted
+
+    def load_graph(self) -> GraphData:
+        """Load the full graph from Neo4j into a GraphData object."""
+        graph = GraphData()
+
+        with self._session() as session:
+            # Load nodes
+            result = session.run(
+                "MATCH (n:_Node) "
+                "RETURN n._id AS id, labels(n) AS labels, properties(n) AS props"
+            )
+            for record in result:
+                node_id = record["id"]
+                # Pick the most specific label (skip _Node)
+                labels = [l for l in record["labels"] if l != "_Node"]
+                label = labels[0] if labels else "_Node"
+                props = dict(record["props"])
+                props.pop("_id", None)  # _id is stored separately
+                graph.nodes.append(Node(id=node_id, label=label, properties=props))
+
+            # Load edges
+            result = session.run(
+                "MATCH (a:_Node)-[r]->(b:_Node) "
+                "RETURN a._id AS src, b._id AS tgt, type(r) AS type, properties(r) AS props"
+            )
+            for record in result:
+                props = dict(record["props"]) if record["props"] else {}
+                graph.edges.append(
+                    Edge(
+                        source_id=record["src"],
+                        target_id=record["tgt"],
+                        type=record["type"],
+                        properties=props,
+                    )
+                )
+
+        logger.info("Loaded %d nodes, %d edges from Neo4j", graph.node_count, graph.edge_count)
+        return graph
 
     def query(self, cypher: str, params: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Execute a Cypher query and return results as list of dicts."""

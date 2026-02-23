@@ -25,8 +25,9 @@ archgraph/
 ├── enrichment/
 │   ├── churn.py            # Git file churn enrichment
 │   └── cve.py              # CVE enrichment via OSV API
+├── manifest.py             # Incremental extraction state (JSON manifest I/O, change detection)
 └── tool/
-    └── archgraph_tool.py   # rlm-agent tool — query() + find_vulnerabilities()
+    └── archgraph_tool.py   # rlm-agent tool — query() + find_vulnerabilities() + diff_summary()
 ```
 
 ## Pipeline
@@ -50,6 +51,41 @@ Step 9:                CVE enrichment (needs Dependency nodes)
                                     ↓
                        Deduplication → Final graph
 ```
+
+### Incremental Extraction
+
+When `--incremental` is enabled, ArchGraph only re-extracts changed files:
+
+```
+1. Load manifest (.archgraph/manifest.json)
+2. Scan current files → compute SHA-256 hashes
+3. Compute ChangeSet (added/modified/deleted files, deps_changed)
+4. If no changes → skip extraction
+5. If git diverged → fallback to full extraction
+6. Run only relevant extractors on changed files
+7. Save updated manifest
+```
+
+**Manifest format** (`.archgraph/manifest.json`):
+```json
+{
+  "version": 1,
+  "extracted_at": "2026-02-23T10:00:00Z",
+  "repo_path": "/path/to/repo",
+  "git_head": "abc123def456",
+  "dependencies_hash": "sha256hex",
+  "files": {
+    "src/main.c": {"hash": "sha256hex", "size": 1024, "language": "c"}
+  }
+}
+```
+
+### APOC Batch Import
+
+If the Neo4j APOC plugin is detected, `import_graph()` automatically uses `apoc.periodic.iterate` for optimized batching:
+- **Nodes**: `parallel: true`, `batchSize: 5000`
+- **Edges**: `parallel: false` (avoids deadlocks from concurrent MATCH+MERGE)
+- Falls back to standard UNWIND if APOC is not installed
 
 ### Thread Safety Rules
 
@@ -153,4 +189,14 @@ class ExtractConfig:
     workers: int = 0          # 0=auto, 1=sequential
     include_cve: bool = False
     osv_batch_size: int = 1000
+    incremental: bool = False  # Enable incremental extraction
 ```
+
+## Graph Diff
+
+`GraphData.diff(newer)` compares two graph snapshots:
+
+- **NodeChange**: node_id, label, changed_properties (prop → (old, new))
+- **GraphDiff**: nodes_added, nodes_removed, nodes_modified, edges_added, edges_removed
+
+Used by `archgraph diff` CLI command and `ArchGraphTool.diff_summary()`.

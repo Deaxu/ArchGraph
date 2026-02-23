@@ -1,6 +1,6 @@
 # CLI Reference
 
-ArchGraph provides four commands: `extract`, `query`, `stats`, and `schema`.
+ArchGraph provides five commands: `extract`, `query`, `stats`, `schema`, and `diff`.
 
 ## `archgraph extract`
 
@@ -31,6 +31,7 @@ archgraph extract REPO_PATH [OPTIONS]
 | `--include-deep/--no-deep` | | `--no-deep` | Tree-sitter deep analysis |
 | `--include-cve/--no-cve` | | `--no-cve` | CVE enrichment via OSV API |
 | `--compile-commands` | | | Path to `compile_commands.json` |
+| `--incremental/--no-incremental` | | `--no-incremental` | Incremental extraction (only changed files) |
 | `--clear-db/--no-clear-db` | | `--no-clear-db` | Clear database before import |
 | `--verbose` | `-v` | | Verbose output |
 
@@ -50,6 +51,9 @@ archgraph extract /path/to/repo -l c,cpp,rust \
 
 # Sequential mode (debugging)
 archgraph extract /path/to/repo -l c -w 1 -v
+
+# Incremental extraction (only changed files)
+archgraph extract /path/to/repo -l c --incremental
 ```
 
 ## Environment Variables
@@ -102,4 +106,31 @@ Show graph database schema (labels, relationship types, property keys).
 
 ```bash
 archgraph schema [--neo4j-uri ...] [--neo4j-user ...] [--neo4j-password ...] [--neo4j-database ...]
+```
+
+## `archgraph diff`
+
+Show differences between the current repo state and the stored Neo4j graph.
+
+```bash
+archgraph diff REPO_PATH [OPTIONS]
+```
+
+Extracts the current state of the repo, loads the stored graph from Neo4j, computes the diff, and displays added/removed/modified nodes and edges.
+
+### Options
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--languages` | `-l` | `c,cpp,rust,java,go` | Comma-separated list of languages |
+| `--neo4j-uri` | | `bolt://localhost:7687` | Neo4j bolt URI |
+| `--neo4j-user` | | `neo4j` | Neo4j username |
+| `--neo4j-password` | | `neo4j` | Neo4j password |
+| `--neo4j-database` | | `neo4j` | Neo4j database name |
+| `--verbose` | `-v` | | Verbose output |
+
+### Example
+
+```bash
+archgraph diff /path/to/repo -l c,cpp
 ```

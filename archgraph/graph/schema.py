@@ -107,6 +107,57 @@ class GraphData:
 
         return {"nodes": node_counts, "edges": edge_counts}
 
+    def diff(self, newer: GraphData) -> GraphDiff:
+        """Compute the difference between this graph (old) and *newer*.
+
+        Returns a GraphDiff with added/removed/modified nodes and edges.
+        """
+        # Build id→Node maps
+        old_map: dict[str, Node] = {n.id: n for n in self.nodes}
+        new_map: dict[str, Node] = {n.id: n for n in newer.nodes}
+
+        old_ids = set(old_map.keys())
+        new_ids = set(new_map.keys())
+
+        # Added / removed nodes
+        nodes_added = [new_map[nid] for nid in sorted(new_ids - old_ids)]
+        nodes_removed = [old_map[nid] for nid in sorted(old_ids - new_ids)]
+
+        # Modified nodes — same id but different properties
+        nodes_modified: list[NodeChange] = []
+        for nid in sorted(old_ids & new_ids):
+            old_node = old_map[nid]
+            new_node = new_map[nid]
+            changed: dict[str, tuple[Any, Any]] = {}
+            all_keys = set(old_node.properties.keys()) | set(new_node.properties.keys())
+            for key in sorted(all_keys):
+                old_val = old_node.properties.get(key)
+                new_val = new_node.properties.get(key)
+                if old_val != new_val:
+                    changed[key] = (old_val, new_val)
+            if changed:
+                nodes_modified.append(
+                    NodeChange(node_id=nid, label=new_node.label, changed_properties=changed)
+                )
+
+        # Edge diff — by (source, target, type) identity
+        old_edge_set = {(e.source_id, e.target_id, e.type) for e in self.edges}
+        new_edge_set = {(e.source_id, e.target_id, e.type) for e in newer.edges}
+
+        new_edge_map = {(e.source_id, e.target_id, e.type): e for e in newer.edges}
+        old_edge_map = {(e.source_id, e.target_id, e.type): e for e in self.edges}
+
+        edges_added = [new_edge_map[k] for k in sorted(new_edge_set - old_edge_set)]
+        edges_removed = [old_edge_map[k] for k in sorted(old_edge_set - new_edge_set)]
+
+        return GraphDiff(
+            nodes_added=nodes_added,
+            nodes_removed=nodes_removed,
+            nodes_modified=nodes_modified,
+            edges_added=edges_added,
+            edges_removed=edges_removed,
+        )
+
 
 # --- Node label constants ---
 
@@ -162,3 +213,47 @@ class EdgeType:
     BRANCHES_TO = "BRANCHES_TO"
     # CVE enrichment
     AFFECTED_BY = "AFFECTED_BY"
+
+
+# ── Graph Diff ───────────────────────────────────────────────────────────────
+
+
+@dataclass
+class NodeChange:
+    """Describes how a single node was modified between two graph snapshots."""
+
+    node_id: str
+    label: str
+    changed_properties: dict[str, tuple[Any, Any]]  # prop → (old_value, new_value)
+
+
+@dataclass
+class GraphDiff:
+    """Difference between two GraphData snapshots."""
+
+    nodes_added: list[Node] = field(default_factory=list)
+    nodes_removed: list[Node] = field(default_factory=list)
+    nodes_modified: list[NodeChange] = field(default_factory=list)
+    edges_added: list[Edge] = field(default_factory=list)
+    edges_removed: list[Edge] = field(default_factory=list)
+
+    @property
+    def has_changes(self) -> bool:
+        return bool(
+            self.nodes_added
+            or self.nodes_removed
+            or self.nodes_modified
+            or self.edges_added
+            or self.edges_removed
+        )
+
+    def summary(self) -> dict[str, int]:
+        """Return a dict of change category → count."""
+        return {
+            "nodes_added": len(self.nodes_added),
+            "nodes_removed": len(self.nodes_removed),
+            "nodes_modified": len(self.nodes_modified),
+            "edges_added": len(self.edges_added),
+            "edges_removed": len(self.edges_removed),
+        }
+

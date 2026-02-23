@@ -64,7 +64,6 @@ Durum ikonları: done, partial, planned, deferred
 ### Adım 9: rlm-agent tool — DONE
 - [x] `archgraph_tool.py` — query(), schema(), stats()
 - [x] Kolaylık metodları: find_attack_surface(), find_dangerous_paths(), find_security_fixes(), find_high_churn_files()
-- [ ] Entry point kaydı (`pyproject.toml` — rlm-agent bağımlılığı olmadan bekleniyor)
 
 ### Adım 10: Testler — DONE
 - [x] `test_schema.py` — 7 test (node/edge/graphdata)
@@ -173,11 +172,39 @@ Durum ikonları: done, partial, planned, deferred
 
 ---
 
-## Gelecek İyileştirmeler — DEFERRED
+## Faz 5 — Performans & Graph Diff — DONE
 
-### Performans (ileri)
-- [ ] Incremental extraction (sadece değişen dosyalar)
-- [ ] Neo4j APOC batch import kullanımı
+### Adım 21: Incremental Extraction — DONE
+- [x] `manifest.py` — `FileEntry`, `Manifest`, `ChangeSet`, I/O, scan, hash, changeset
+- [x] `config.py` — `incremental: bool = False`
+- [x] `builder.py` — `_build_incremental()`, `_run_incremental_steps()`, manifest save
+- [x] `treesitter.py` — `changed_files` param for filtered extraction
+- [x] `git.py` — `since_commit` param for incremental history
+- [x] `neo4j_store.py` — `delete_file_subgraph()` for deleted files
+- [x] `cli.py` — `--incremental/--no-incremental`, `--clear-db` deletes manifest
+
+### Adım 22: APOC Batch Import — DONE
+- [x] `neo4j_store.py` — `_detect_apoc()` (auto-detect, cached)
+- [x] `neo4j_store.py` — `_import_graph_apoc()` (node: parallel, edge: sequential)
+- [x] `neo4j_store.py` — `import_graph()` auto-routes to APOC when available
+
+### Adım 23: Graph Diff — DONE
+- [x] `schema.py` — `NodeChange`, `GraphDiff` dataclasses
+- [x] `schema.py` — `GraphData.diff()` method
+- [x] `neo4j_store.py` — `load_graph()` method
+- [x] `cli.py` — `archgraph diff REPO_PATH` command
+- [x] `archgraph_tool.py` — `diff_summary()` convenience method
+
+### Adım 24: Phase 5 Tests — DONE
+- [x] `test_manifest.py` — 18 tests (I/O, changeset, scan, deps hash, build)
+- [x] `test_builder.py` — +3 incremental tests (no-manifest fallback, modified, deleted)
+- [x] `test_schema.py` — +6 diff tests (added, removed, modified, edges, no-change, summary)
+- [x] `test_neo4j_mock.py` — 2 APOC detection tests
+- [x] Toplam: ~131 test (127 passed + 4 skipped)
+
+---
+
+## Gelecek İyileştirmeler — DEFERRED
 
 ### Ölçek Doğrulama
 - [x] Küçük proje testi (zlib ~50K LOC) — 3,577 node, 11,100 edge, 1,020 commit, 89 yazar
@@ -185,7 +212,3 @@ Durum ikonları: done, partial, planned, deferred
 - [ ] Büyük proje testi (FFmpeg ~1M LOC)
 - [ ] Extraction süresi ve graph boyutu benchmarkları
 
-### rlm-agent İleri Entegrasyon
-- [ ] Entry point kaydı ve auto-discovery
-- [ ] Önceden tanımlı Cypher sorgu şablonları
-- [ ] Graph diff (iki versiyon arası fark)

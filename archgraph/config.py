@@ -196,3 +196,4 @@ class ExtractConfig:
     workers: int = 0  # 0=auto (min(cpu_count, 8)), 1=sequential
     include_cve: bool = False
     osv_batch_size: int = 1000
+    incremental: bool = False

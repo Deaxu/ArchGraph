@@ -10,6 +10,7 @@ import pytest
 from archgraph.config import ExtractConfig
 from archgraph.graph.builder import GraphBuilder
 from archgraph.graph.schema import NodeLabel, EdgeType
+from archgraph.manifest import load_manifest, delete_manifest
 
 
 @pytest.fixture
@@ -295,3 +296,124 @@ def test_pipeline_parallel(sample_c_project):
     # Same total counts
     assert graph_seq.node_count == graph_par.node_count
     assert graph_seq.edge_count == graph_par.edge_count
+
+
+# ── Incremental Extraction Tests ─────────────────────────────────────────────
+
+
+def test_incremental_no_manifest_fallback(sample_c_project):
+    """Incremental with no prior manifest should fall back to full build and create manifest."""
+    # Ensure no manifest exists
+    delete_manifest(sample_c_project)
+    assert load_manifest(sample_c_project) is None
+
+    config = ExtractConfig(
+        repo_path=sample_c_project,
+        languages=["c"],
+        include_git=True,
+        include_deps=True,
+        include_annotations=True,
+        include_security_labels=True,
+        incremental=True,
+    )
+
+    builder = GraphBuilder(config)
+    graph = builder.build()
+
+    # Should produce a full graph (non-empty)
+    assert graph.node_count > 0
+    assert graph.edge_count > 0
+
+    # Should now have a manifest
+    manifest = load_manifest(sample_c_project)
+    assert manifest is not None
+    assert len(manifest.files) > 0
+
+
+def test_incremental_modified_file(sample_c_project):
+    """After full build + modifying a file, incremental should only re-extract changed files."""
+    # First: full build to create manifest
+    config = ExtractConfig(
+        repo_path=sample_c_project,
+        languages=["c"],
+        include_git=False,
+        include_deps=False,
+        include_annotations=False,
+        include_security_labels=False,
+        incremental=False,
+    )
+    full_graph = GraphBuilder(config).build()
+    full_count = full_graph.node_count
+    assert full_count > 0
+
+    # Manifest should exist
+    manifest = load_manifest(sample_c_project)
+    assert manifest is not None
+    old_file_count = len(manifest.files)
+
+    # Modify one file
+    (sample_c_project / "parser.c").write_text(
+        'int new_func() { return 42; }\n', encoding="utf-8"
+    )
+
+    # Incremental build
+    config_incr = ExtractConfig(
+        repo_path=sample_c_project,
+        languages=["c"],
+        include_git=False,
+        include_deps=False,
+        include_annotations=False,
+        include_security_labels=False,
+        incremental=True,
+    )
+    incr_graph = GraphBuilder(config_incr).build()
+
+    # Incremental graph should have nodes (at least the modified file)
+    assert incr_graph.node_count > 0
+
+    # Updated manifest should still have the same file count
+    updated_manifest = load_manifest(sample_c_project)
+    assert updated_manifest is not None
+    assert len(updated_manifest.files) == old_file_count
+
+
+def test_incremental_deleted_file(sample_c_project):
+    """After full build + deleting a file, incremental should detect the deletion."""
+    # First: full build
+    config = ExtractConfig(
+        repo_path=sample_c_project,
+        languages=["c"],
+        include_git=False,
+        include_deps=False,
+        include_annotations=False,
+        include_security_labels=False,
+        incremental=False,
+    )
+    GraphBuilder(config).build()
+
+    manifest = load_manifest(sample_c_project)
+    assert manifest is not None
+    old_file_count = len(manifest.files)
+    assert old_file_count >= 3  # main.c, parser.c, parser.h
+
+    # Delete a file
+    (sample_c_project / "parser.c").unlink()
+
+    # Incremental build
+    config_incr = ExtractConfig(
+        repo_path=sample_c_project,
+        languages=["c"],
+        include_git=False,
+        include_deps=False,
+        include_annotations=False,
+        include_security_labels=False,
+        incremental=True,
+    )
+    incr_graph = GraphBuilder(config_incr).build()
+
+    # Updated manifest should have one less file
+    updated_manifest = load_manifest(sample_c_project)
+    assert updated_manifest is not None
+    assert len(updated_manifest.files) == old_file_count - 1
+    assert "parser.c" not in updated_manifest.files
+

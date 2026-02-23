@@ -183,7 +183,43 @@ class ArchGraphTool(BaseTool):
             results = [r for r in results if severity.upper() in (r.get("severity") or "").upper()]
         return results
 
+    def diff_summary(
+        self,
+        repo_path: str,
+        languages: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Compare the current repo state against the stored Neo4j graph.
+
+        Args:
+            repo_path: Path to the local repository.
+            languages: List of languages to extract (default: c,cpp,rust,java,go).
+
+        Returns:
+            Dict with nodes_added/removed/modified and edges_added/removed counts.
+        """
+        from pathlib import Path
+
+        from archgraph.config import ExtractConfig
+        from archgraph.graph.builder import GraphBuilder
+
+        self._ensure_connected()
+
+        config = ExtractConfig(
+            repo_path=Path(repo_path),
+            languages=languages or ["c", "cpp", "rust", "java", "go"],
+            include_git=True,
+            include_deps=True,
+            include_annotations=True,
+            include_security_labels=True,
+        )
+
+        current_graph = GraphBuilder(config).build()
+        stored_graph = self._store.load_graph()
+        graph_diff = stored_graph.diff(current_graph)
+        return graph_diff.summary()
+
 
 def create_tool(**kwargs: Any) -> ArchGraphTool:
     """Factory function for entry-point registration."""
     return ArchGraphTool(**kwargs)
+
