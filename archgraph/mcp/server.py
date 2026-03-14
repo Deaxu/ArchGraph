@@ -154,6 +154,40 @@ RESOURCES = [
 ]
 
 
+
+import hashlib
+import time
+from functools import lru_cache
+
+class _ToolCache:
+    """Simple TTL cache for MCP tool results."""
+    
+    def __init__(self, ttl: int = 60, maxsize: int = 128):
+        self._ttl = ttl
+        self._cache: dict[str, tuple[float, Any]] = {}
+        self._maxsize = maxsize
+    
+    def _make_key(self, name: str, arguments: dict[str, Any]) -> str:
+        raw = f"{name}:{json.dumps(arguments, sort_keys=True)}"
+        return hashlib.md5(raw.encode()).hexdigest()
+    
+    def get(self, name: str, arguments: dict[str, Any]) -> Any | None:
+        key = self._make_key(name, arguments)
+        if key in self._cache:
+            ts, value = self._cache[key]
+            if time.time() - ts < self._ttl:
+                return value
+            del self._cache[key]
+        return None
+    
+    def set(self, name: str, arguments: dict[str, Any], value: Any) -> None:
+        if len(self._cache) >= self._maxsize:
+            # Evict oldest
+            oldest_key = min(self._cache, key=lambda k: self._cache[k][0])
+            del self._cache[oldest_key]
+        key = self._make_key(name, arguments)
+        self._cache[key] = (time.time(), value)
+
 class ArchGraphMCP:
     """ArchGraph MCP server implementation."""
 
@@ -166,6 +200,7 @@ class ArchGraphMCP:
     ) -> None:
         self._store = Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database)
         self._impact = ImpactAnalyzer(self._store)
+        self._cache = _ToolCache(ttl=60)
 
     def connect(self) -> None:
         self._store.connect()
@@ -175,37 +210,50 @@ class ArchGraphMCP:
 
     async def handle_tool_call(self, name: str, arguments: dict[str, Any]) -> Any:
         """Handle an MCP tool call."""
+        # Check cache
+        if name not in ("detect_changes",):
+            cached = self._cache.get(name, arguments)
+            if cached is not None:
+                return cached
+        
+        result = None
         try:
             if name == "query" or name == "cypher":
                 cypher = arguments.get("cypher") or arguments.get("query", "")
                 params = arguments.get("params", {})
-                return self._store.query(cypher, params)
+                result = self._store.query(cypher, params)
 
             elif name == "impact":
                 symbol_id = arguments["symbol_id"]
                 direction = arguments.get("direction", "upstream")
                 max_depth = arguments.get("max_depth", 5)
-                return self._impact.analyze_impact(symbol_id, direction, max_depth)
+                result = self._impact.analyze_impact(symbol_id, direction, max_depth)
 
             elif name == "context":
-                return self._get_context(arguments["symbol_id"])
+                result = self._get_context(arguments["symbol_id"])
 
             elif name == "detect_changes":
-                return self._impact.analyze_change_impact(arguments["changed_files"])
+                result = self._impact.analyze_change_impact(arguments["changed_files"])
 
             elif name == "find_vulnerabilities":
                 severity = arguments.get("severity")
-                return self._find_vulnerabilities(severity)
+                result = self._find_vulnerabilities(severity)
 
             elif name == "stats":
-                return self._get_stats()
+                result = self._get_stats()
 
             else:
-                return {"error": f"Unknown tool: {name}"}
+                result = {"error": f"Unknown tool: {name}"}
 
         except Exception as e:
             logger.exception("Tool call failed: %s", name)
-            return {"error": str(e)}
+            result = {"error": str(e)}
+        
+        # Cache successful results
+        if result is not None and not isinstance(result, dict) or "error" not in result:
+            self._cache.set(name, arguments, result)
+        
+        return result
 
     async def handle_resource_read(self, uri: str) -> Any:
         """Handle an MCP resource read."""

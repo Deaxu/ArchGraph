@@ -62,6 +62,20 @@ class SecurityLabeler:
             if changed:
                 labeled += 1
 
+            # Calculate risk score (0-100)
+            risk = 0
+            if node.properties.get("is_input_source"):
+                risk += 30
+            if node.properties.get("is_dangerous_sink"):
+                risk += 30
+            if node.properties.get("touches_unsafe"):
+                risk += 20
+            if node.properties.get("is_allocator"):
+                risk += 10
+            if node.properties.get("is_parser"):
+                risk += 10
+            node.properties["risk_score"] = min(risk, 100)
+
         logger.info("Applied security labels to %d functions", labeled)
         return labeled
 
