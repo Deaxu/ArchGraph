@@ -222,6 +222,8 @@ pip install archgraph[dev]
 
 **Requirements:** Python 3.11+, Neo4j 5.x (for graph storage)
 
+> **Docker:** Run `docker compose up -d neo4j` to start Neo4j with password `archgraph`.
+
 ---
 
 ## Quick Start
@@ -348,9 +350,13 @@ asyncio.run(run_mcp_server(
 
 ## Validated Scale
 
-| Project | Files | Nodes | Edges | Commits | Authors |
-|---------|-------|-------|-------|---------|---------|
-| zlib (~50K LOC) | 79 | 3,577 | 11,100 | 1,020 | 89 |
+| Project | Language | Files | Nodes | Edges | Time |
+|---------|----------|-------|-------|-------|------|
+| [zlib](https://github.com/madler/zlib) (~50K LOC) | C | 79 | 2,389 | 3,968 | 6.6s |
+| [fastify](https://github.com/fastify/fastify) (~30K LOC) | JavaScript | 487 | 2,810 | 18,472 | 10.5s |
+| Linux `drivers/usb` (~500K LOC) | C | 892 | 62,812 | 122,746 | 12.7s |
+
+*Benchmarks run on Windows 11, Python 3.13, single-threaded extraction. Parallel mode (`-w 4`) is 2-3x faster.*
 
 ---
 
