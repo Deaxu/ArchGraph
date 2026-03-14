@@ -4,7 +4,7 @@
 
 ```
 archgraph/
-├── cli.py                  # Click CLI — extract, query, stats, schema + GitHub URL support
+├── cli.py                  # Click CLI — extract, query, stats, diff, mcp, serve, skills, impact, repos
 ├── config.py               # Constants, language maps, security patterns, ExtractConfig
 ├── extractors/
 │   ├── base.py             # BaseExtractor ABC
@@ -20,19 +20,28 @@ archgraph/
 │       ├── rust.py / java.py / go.py / kotlin.py / swift.py
 ├── graph/
 │   ├── schema.py           # Node/Edge dataclass, NodeLabel/EdgeType constants
-│   ├── builder.py          # 9-step pipeline (parallel/sequential) orchestration
+│   ├── builder.py          # 11-step pipeline (parallel/sequential) orchestration
 │   └── neo4j_store.py      # Neo4j connection, batch import, indexing, query
 ├── enrichment/
 │   ├── churn.py            # Git file churn enrichment
-│   └── cve.py              # CVE enrichment via OSV API
-├── manifest.py             # Incremental extraction state (JSON manifest I/O, change detection)
-└── tool/
-    └── archgraph_tool.py   # rlm-agent tool — query() + find_vulnerabilities() + diff_summary()
+│   ├── cve.py              # CVE enrichment via OSV API
+│   ├── clustering.py       # Community detection (greedy modularity)
+│   └── process.py          # Execution flow tracing from entry points
+├── mcp/
+│   └── server.py           # MCP server — 7 tools, 4 resources for AI agents
+├── server/
+│   └── web.py              # FastAPI web dashboard with interactive UI
+├── tool/
+│   └── impact.py           # Impact analysis — blast radius computation
+├── registry.py             # Multi-repo global registry (~/.archgraph/registry.json)
+├── search.py               # Hybrid search — BM25 + graph relevance + RRF
+├── skills.py               # Agent skill file generation
+└── manifest.py             # Incremental extraction state (JSON manifest I/O, change detection)
 ```
 
 ## Pipeline
 
-The `GraphBuilder` orchestrates 9 extraction steps. It supports two modes:
+The `GraphBuilder` orchestrates 11 extraction steps. It supports two modes:
 
 - **Sequential** (`workers=1`): Steps run one after another
 - **Parallel** (`workers>1`): Independent steps run concurrently via `ThreadPoolExecutor`
@@ -48,6 +57,9 @@ Group C (concurrent):  Step 6 (clang) | Step 7 (deep analysis)
                                     ↓
 Step 8:                Churn enrichment (needs File nodes + git data)
 Step 9:                CVE enrichment (needs Dependency nodes)
+                                    ↓
+Step 10:               Clustering (community detection on function graph)
+Step 11:               Process tracing (execution flows from entry points)
                                     ↓
                        Deduplication → Final graph
 ```
@@ -119,6 +131,8 @@ If the Neo4j APOC plugin is detected, `import_graph()` automatically uses `apoc.
 | Vulnerability | Known vulnerability (CVE/GHSA/PYSEC) | vuln_id, summary, severity, aliases |
 | Annotation | Code annotation | type, text, line |
 | BuildConfig | Build configuration | name, path |
+| **Cluster** | Functional community | name, size, cohesion |
+| **Process** | Execution flow | name, entry_point, type, step_count, depth |
 
 ### Edge Types
 
@@ -145,6 +159,8 @@ If the Neo4j APOC plugin is detected, `import_graph()` automatically uses `apoc.
 | HAS_ANNOTATION | File → Annotation | |
 | AFFECTED_BY | Dependency → Vulnerability | |
 | COMPILED_WITH | File → BuildConfig | |
+| **BELONGS_TO** | Function → Cluster | |
+| **PARTICIPATES_IN** | Function → Process | step |
 
 ### Node ID Format
 
@@ -157,6 +173,8 @@ Examples:
 - `dep:openssl`
 - `vuln:CVE-2024-1234`
 - `bb:src/main.c:parse_data:0`
+- `cluster:0`
+- `process:func:src/main.c:main:1`
 
 ### Neo4j Conventions
 
@@ -190,6 +208,9 @@ class ExtractConfig:
     include_cve: bool = False
     osv_batch_size: int = 1000
     incremental: bool = False  # Enable incremental extraction
+    include_clustering: bool = False  # Community detection
+    include_process: bool = False  # Execution flow tracing
+    include_skills: bool = False  # Agent skill generation
 ```
 
 ## Graph Diff
@@ -199,4 +220,37 @@ class ExtractConfig:
 - **NodeChange**: node_id, label, changed_properties (prop → (old, new))
 - **GraphDiff**: nodes_added, nodes_removed, nodes_modified, edges_added, edges_removed
 
-Used by `archgraph diff` CLI command and `ArchGraphTool.diff_summary()`.
+Used by `archgraph diff` CLI command.
+
+## Clustering
+
+Uses greedy modularity community detection on the function call graph:
+
+1. Build undirected graph from `CALLS` edges between `Function` nodes
+2. Run greedy modularity algorithm (Louvain approximation)
+3. Create `Cluster` nodes with name, size, and cohesion score
+4. Add `BELONGS_TO` edges from functions to clusters
+
+Cohesion score = graph density of the cluster subgraph (0.0 to 1.0).
+
+## Process Tracing
+
+Traces execution flows from entry points:
+
+1. Find entry points (main, init, exported functions with no callers)
+2. BFS trace through `CALLS` edges up to max_depth
+3. Classify processes:
+   - `data_flow` — touches both input sources and dangerous sinks
+   - `input_handler` — touches input sources only
+   - `sink_caller` — touches dangerous sinks only
+   - `computation` — neither
+4. Create `Process` nodes and `PARTICIPATES_IN` edges with step order
+
+## Hybrid Search
+
+Combines BM25 keyword matching with graph-based relevance:
+
+- **BM25**: Term frequency × inverse document frequency scoring
+- **Graph relevance**: Security-sensitive nodes get boosted
+- **Reciprocal Rank Fusion**: Combines both score lists
+- Results include name, file, score, snippet, and security flags

@@ -10,6 +10,8 @@ from pathlib import Path
 from archgraph.config import ExtractConfig
 from archgraph.enrichment.churn import ChurnEnricher
 from archgraph.enrichment.cve import CveEnricher
+from archgraph.enrichment.clustering import ClusterEnricher
+from archgraph.enrichment.process import ProcessTracer
 from archgraph.extractors.annotations import AnnotationExtractor
 from archgraph.extractors.clang import ClangExtractor
 from archgraph.extractors.dependencies import DependencyExtractor
@@ -221,7 +223,7 @@ class GraphBuilder:
         """Original sequential pipeline — guaranteed identical output."""
         graph = GraphData()
         repo = self.config.repo_path
-        total_steps = 9
+        total_steps = 11
 
         # Step 1: Tree-sitter structural extraction
         logger.info("Step 1/%d: Tree-sitter extraction", total_steps)
@@ -352,6 +354,24 @@ class GraphBuilder:
         else:
             logger.info("Step 9/%d: CVE enrichment (skipped)", total_steps)
 
+        # Step 10: Clustering
+        if self.config.include_clustering:
+            logger.info("Step 10/%d: Clustering", total_steps)
+            cluster_enricher = ClusterEnricher()
+            cluster_count = cluster_enricher.enrich(graph)
+            logger.info("  -> %d clusters detected", cluster_count)
+        else:
+            logger.info("Step 10/%d: Clustering (skipped)", total_steps)
+
+        # Step 11: Process tracing
+        if self.config.include_process:
+            logger.info("Step 11/%d: Process tracing", total_steps)
+            process_tracer = ProcessTracer()
+            process_count = process_tracer.enrich(graph)
+            logger.info("  -> %d processes traced", process_count)
+        else:
+            logger.info("Step 11/%d: Process tracing (skipped)", total_steps)
+
         # Deduplicate
         graph.deduplicate()
         logger.info(
@@ -368,7 +388,7 @@ class GraphBuilder:
         """Parallel pipeline using ThreadPoolExecutor for step-level concurrency."""
         graph = GraphData()
         repo = self.config.repo_path
-        total_steps = 9
+        total_steps = 11
         logger.info("Parallel pipeline with %d workers", workers)
 
         with ThreadPoolExecutor(max_workers=workers) as pool:
@@ -487,6 +507,24 @@ class GraphBuilder:
                 logger.info("Step 9/%d: CVE -> %d vulnerabilities", total_steps, vuln_count)
             else:
                 logger.info("Step 9/%d: CVE enrichment (skipped)", total_steps)
+
+            # Step 10: Clustering
+            if self.config.include_clustering:
+                logger.info("Step 10/%d: Clustering", total_steps)
+                cluster_enricher = ClusterEnricher()
+                cluster_count = cluster_enricher.enrich(graph)
+                logger.info("  -> %d clusters detected", cluster_count)
+            else:
+                logger.info("Step 10/%d: Clustering (skipped)", total_steps)
+
+            # Step 11: Process tracing
+            if self.config.include_process:
+                logger.info("Step 11/%d: Process tracing", total_steps)
+                process_tracer = ProcessTracer()
+                process_count = process_tracer.enrich(graph)
+                logger.info("  -> %d processes traced", process_count)
+            else:
+                logger.info("Step 11/%d: Process tracing (skipped)", total_steps)
 
         # Deduplicate
         graph.deduplicate()

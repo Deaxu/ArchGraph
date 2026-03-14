@@ -197,3 +197,6 @@ class ExtractConfig:
     include_cve: bool = False
     osv_batch_size: int = 1000
     incremental: bool = False
+    include_clustering: bool = False
+    include_process: bool = False
+    include_skills: bool = False

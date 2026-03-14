@@ -183,6 +183,8 @@ class NodeLabel:
     BUILD_CONFIG = "BuildConfig"
     BASIC_BLOCK = "BasicBlock"
     VULNERABILITY = "Vulnerability"
+    CLUSTER = "Cluster"
+    PROCESS = "Process"
 
 
 class EdgeType:
@@ -213,6 +215,9 @@ class EdgeType:
     BRANCHES_TO = "BRANCHES_TO"
     # CVE enrichment
     AFFECTED_BY = "AFFECTED_BY"
+    # Clustering & Process tracing
+    BELONGS_TO = "BELONGS_TO"
+    PARTICIPATES_IN = "PARTICIPATES_IN"
 
 
 # ── Graph Diff ───────────────────────────────────────────────────────────────

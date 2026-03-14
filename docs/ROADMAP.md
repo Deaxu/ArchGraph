@@ -1,214 +1,81 @@
-# ArchGraph Geliştirme Yol Haritası
+# Roadmap
 
-Durum ikonları: done, partial, planned, deferred
+## Phase 1: Core Extraction ✅ COMPLETE
 
----
+- [x] Tree-sitter multi-language parser (10 languages)
+- [x] Git history extraction (commits, authors, tags, numstat)
+- [x] Dependency extraction (10 package managers)
+- [x] Annotation scanning (TODO, HACK, FIXME, etc.)
+- [x] Security labeling (input sources, dangerous sinks, allocators, crypto, parsers)
+- [x] Neo4j batch import with APOC support
+- [x] CLI with extract, query, stats, schema commands
+- [x] Python API (ExtractConfig + GraphBuilder)
+- [x] Docker support
 
-## Faz 1: Tree-sitter Yapısal Graph (Tüm Diller)
+## Phase 2: Deep Analysis ✅ COMPLETE
 
-### Adım 1: Proje iskelet yapısı — DONE
-- [x] pyproject.toml, dizin yapısı, temel config
-- [x] Venv, bağımlılıklar, CLI entry point
+- [x] libclang integration for C/C++ (CFG, data flow, taint analysis)
+- [x] Tree-sitter deep analysis for Rust, Java, Go, Kotlin, Swift
+- [x] Security fix detection in git commits
+- [x] Churn enrichment (file change frequency)
+- [x] CVE enrichment via OSV API
+- [x] Graph diff (compare repo state vs stored graph)
+- [x] Incremental extraction with manifest-based change detection
 
-### Adım 2: Graph şeması ve Neo4j store — DONE
-- [x] `schema.py` — Node/Edge dataclass, NodeLabel/EdgeType sabitleri
-- [x] `neo4j_store.py` — bağlantı, batch import, index oluşturma, sorgu
-- [x] `GraphData` — merge, deduplicate, stats
+## Phase 3: AI Agent Integration ✅ COMPLETE
 
-### Adım 3: Tree-sitter extractor (C/C++) — DONE
-- [x] `treesitter.py` — AST parse, fonksiyon/class/struct/import extraction
-- [x] CALLS edge'leri (call_expression yürüme)
-- [x] CONTAINS edge'leri (file→func, class→method)
-- [x] Export detection (static, pub, public, uppercase)
-- [x] Parameter extraction
+- [x] **MCP Server** — 7 tools, 4 resources for any MCP-compatible agent
+  - [x] `query` — Cypher queries
+  - [x] `impact` — Blast radius analysis
+  - [x] `context` — 360° symbol view
+  - [x] `detect_changes` — Git-diff impact
+  - [x] `find_vulnerabilities` — CVE detection
+  - [x] `cypher` — Raw queries
+  - [x] `stats` — Graph statistics
+- [x] **Clustering** — Community detection (greedy modularity)
+- [x] **Process Tracing** — Execution flow analysis from entry points
+- [x] **Web Dashboard** — Interactive graph exploration with FastAPI
+- [x] **Hybrid Search** — BM25 + graph relevance + RRF
+- [x] **Multi-Repo Registry** — Global index at `~/.archgraph/registry.json`
+- [x] **Agent Skills Generation** — Security-focused skill files for AI agents
+- [x] **Impact Analysis** — Blast radius computation with risk assessment
 
-### Adım 4: Tree-sitter diğer diller — DONE
-- [x] Rust — function_item, struct_item, trait_item, impl_item, use_declaration
-- [x] Java — method_declaration, class_declaration, interface_declaration
-- [x] Go — function_declaration, method_declaration, type_declaration
-- [x] JavaScript — function_declaration, arrow_function, class_declaration
-- [x] TypeScript — interface_declaration, type_alias_declaration, enum_declaration
-- [x] Kotlin, Swift, Objective-C — grammar tanımları (opsiyonel bağımlılık)
+## Phase 4: Advanced Features 🚧 IN PROGRESS
 
-### Adım 5: Git extractor — DONE
-- [x] `git.py` — commit geçmişi, yazar, parent chain
-- [x] File→Commit mapping (MODIFIED_IN) — per-file `lines_added`, `lines_deleted` property'leri
-- [x] Commit node property'leri — `total_insertions`, `total_deletions`, `files_changed`
-- [x] Tag extraction (TAGGED_AS) — full hash ile commit node'a bağlantı
-- [x] Security commit tespiti (CVE, buffer overflow, use-after-free, vb.)
-- [x] SecurityFix → AFFECTS → File (güvenlik fix'inin etkilediği dosyalar)
-- [x] `churn.py` — dosya değişim sıklığı enrichment
-- [x] `--numstat` parser bug fix — blank-line tolerant parsing
+- [ ] **Embeddings** — Semantic search with vector embeddings
+- [ ] **Cross-repo analysis** — Dependency tracking across repositories
+- [ ] **Real-time updates** — File watcher for automatic re-indexing
+- [ ] **Visualization** — Interactive graph visualization (D3.js/ForceGraph)
+- [ ] **Export formats** — GraphML, JSON-LD, RDF export
+- [ ] **IDE plugins** — VS Code / JetBrains integration
+- [ ] **Performance** — Rust-based parser for 10x speed improvement
+- [ ] **Cloud deployment** — Managed Neo4j + hosted MCP server
 
-### Adım 6: Dependency extraction — DONE
-- [x] Cargo.toml (tam TOML parse + regex fallback)
-- [x] go.mod
-- [x] package.json
-- [x] build.gradle / build.gradle.kts
-- [x] Podfile
-- [x] CMakeLists.txt (find_package + FetchContent)
-- [x] conanfile.txt
-- [x] vcpkg.json
-- [x] Package.swift
+## Comparison with Similar Tools
 
-### Adım 7: Annotations & security labels — DONE
-- [x] `annotations.py` — TODO/HACK/UNSAFE/FIXME/BUG/XXX/SECURITY/VULNERABILITY
-- [x] `security_labels.py` — input_source, dangerous_sink, allocator, crypto, parser, unsafe
-- [x] Etiket kümeleri `config.py`'de frozenset olarak tanımlı
+| Feature | **ArchGraph** | **GitNexus** | **Sourcegraph** | **CodeQL** |
+|---------|---------------|--------------|-----------------|------------|
+| **License** | MIT | PolyForm NC | BSL | Proprietary |
+| **Language** | Python | TypeScript | Go | C++/JS |
+| **Graph DB** | Neo4j | KuzuDB | PostgreSQL | Custom |
+| **Languages** | 10 | 13 | 40+ | 10+ |
+| **MCP Server** | ✅ 7 tools | ✅ 7 tools | ❌ | ❌ |
+| **Web UI** | ✅ FastAPI | ✅ React | ✅ | ❌ |
+| **Taint Analysis** | ✅ libclang | ❌ | ❌ | ✅ |
+| **CVE Detection** | ✅ OSV API | ❌ | ✅ | ✅ |
+| **Clustering** | ✅ Leiden | ✅ Leiden | ❌ | ❌ |
+| **Process Tracing** | ✅ | ✅ | ❌ | ❌ |
+| **Hybrid Search** | ✅ BM25+Graph | ✅ BM25+Semantic | ✅ | ❌ |
+| **Local-first** | ✅ | ✅ | ❌ | ✅ |
+| **Incremental** | ✅ | ✅ | ✅ | ❌ |
+| **Agent Skills** | ✅ Security | ✅ General | ❌ | ❌ |
+| **Impact Analysis** | ✅ | ✅ | Partial | ✅ |
 
-### Adım 8: Graph builder pipeline — DONE
-- [x] `builder.py` — tüm extractor'ları sırayla çalıştır, merge, deduplicate
-- [x] `cli.py` — `archgraph extract` komutu, tüm flag'ler
-- [x] `cli.py` — GitHub URL desteği (auto clone, `--branch`, `--depth`, temp cleanup)
+### Why ArchGraph?
 
-### Adım 9: rlm-agent tool — DONE
-- [x] `archgraph_tool.py` — query(), schema(), stats()
-- [x] Kolaylık metodları: find_attack_surface(), find_dangerous_paths(), find_security_fixes(), find_high_churn_files()
-
-### Adım 10: Testler — DONE
-- [x] `test_schema.py` — 7 test (node/edge/graphdata)
-- [x] `test_treesitter.py` — 15 test (C parse, Rust parse, edge cases)
-- [x] `test_extractors.py` — 20 test (dependency, annotation, security label, git)
-- [x] `test_builder.py` — 2 test (full pipeline integration)
-- [x] `test_tool.py` — 2 test (tool property/creation)
-- [x] Toplam: 44/44 test geçiyor
-
----
-
-## Faz 2: Clang Deep Analysis (C/C++) — DONE
-
-### Adım 11: Data flow / taint tracking — DONE
-- [x] `clang.py` — libclang AST traversal (tam implementasyon)
-- [x] DATA_FLOWS_TO edge'leri (variable→variable veri akışı, reaching definitions)
-- [x] TAINTS edge'leri (tainted input yayılma zinciri: INPUT_SOURCE→var chain→DANGEROUS_SINK)
-- [x] BasicBlock node'ları (CFG — if/else, while/for, return desteği)
-- [x] BRANCHES_TO edge'leri
-
-### Adım 12: Ek Clang özellikleri — DONE
-- [x] Macro expansion — EXPANDS_MACRO edge'leri (MACRO_INSTANTIATION tracking)
-- [x] Type resolution — typedef zinciri çözümleme (resolved_type property)
-- [ ] Template instantiation — C++ template gerçek tipleri (deferred — Faz 3 kapsamına alındı)
-- [x] Pointer analysis — void* cast (has_void_cast), pointer arithmetic (has_pointer_arith) flag'leri
-
-### Adım 13: Clang testleri — DONE
-- [x] CFG testleri (basic, if, loop, contains, multiple functions)
-- [x] Data flow testleri (simple flow, independent vars)
-- [x] Taint testleri (recv→memcpy chain, no taint without source)
-- [x] Macro expansion testi
-- [x] Typedef resolution testi
-- [x] Pointer analysis testleri (void cast, pointer arith)
-- [x] Edge case testleri (empty dir, non-C ignored, syntax error tolerance)
-- [x] Builder entegrasyon testi (pipeline with clang)
-- [x] Toplam: 62/62 test geçiyor (eski 44 + yeni 18)
-
----
-
-## Faz 3: Tree-Sitter Deep Analysis (Rust, Java, Go, Kotlin, Swift) — DONE
-
-### Adım 14: Tree-sitter deep analysis engine — DONE
-- [x] `deep/lang_spec.py` — LangSpec frozen dataclass + REGISTRY
-- [x] `deep/engine.py` — CFG builder, var def extraction, reaching definitions, data flow, taint
-- [x] Statement wrapper unwrapping (expression_statement → if_expression etc.)
-- [x] Ortak algoritmalar clang.py'den port (dil-bağımsız)
-
-### Adım 15: Dil spesifikasyonları + pattern detector'lar — DONE
-- [x] `deep/rust.py` — unsafe block, transmute, unwrap, raw deref pattern tespiti
-- [x] `deep/java.py` — reflection, serialization, synchronized, native pattern tespiti
-- [x] `deep/kotlin.py` — coroutine, force unwrap (!!), safe call (?.) pattern tespiti
-- [x] `deep/go.py` — goroutine, defer, channel op, unsafe pointer, error check pattern tespiti
-- [x] `deep/swift.py` — force unwrap, optional chain, force try, weak ref pattern tespiti
-- [x] Kotlin/Swift opsiyonel — grammar yoksa skip
-
-### Adım 16: Pipeline entegrasyonu — DONE
-- [x] `deep/__init__.py` — TreeSitterDeepExtractor class (BaseExtractor)
-- [x] `config.py` — `include_deep: bool = False` field
-- [x] `builder.py` — Step 7/8: TreeSitterDeepExtractor (lazy import)
-- [x] `cli.py` — `--include-deep/--no-deep` option
-- [x] `archgraph_tool.py` — `find_unsafe_functions()`, `find_goroutine_spawners()`
-- [x] `graph/__init__.py` — Lazy import ile circular dependency fix
-
-### Adım 17: Testler — DONE
-- [x] Rust CFG testleri (basic, if, loop) — 3 test
-- [x] Rust data flow testleri (simple flow, independent) — 2 test
-- [x] Rust taint testleri (chain, no taint) — 2 test
-- [x] Rust pattern testleri (unsafe, transmute, unwrap) — 3 test
-- [x] Java CFG testleri (basic, if) — 2 test
-- [x] Java pattern testleri (reflection, synchronized) — 2 test
-- [x] Go CFG testleri (basic, for loop) — 2 test
-- [x] Go pattern testleri (goroutine, channel, defer) — 3 test
-- [x] Kotlin pattern testleri (coroutine, force unwrap) — 2 test (skipif)
-- [x] Swift pattern testleri (force unwrap, optional chain) — 2 test (skipif)
-- [x] Edge case testleri (empty dir, unsupported lang, syntax error) — 3 test
-- [x] Extractor integration testleri (Rust, Java, Go full extract, available_languages) — 4 test
-- [x] Builder integration testi (pipeline with deep) — 1 test
-- [x] Toplam: 93 test (89 passed + 4 skipped)
-
----
-
-## Faz 4: Performans Optimizasyonu + CVE Enrichment — DONE
-
-### Adım 18: Performans — Pipeline ve file-level paralelizasyon — DONE
-- [x] `config.py` — `workers`, `include_cve`, `osv_batch_size` alanları + `SOURCE_TO_OSV_ECOSYSTEM` sabiti
-- [x] `treesitter.py` — `threading.local()` thread-başına parser + `ThreadPoolExecutor` ile paralel parse
-- [x] `clang.py` — Her thread kendi `Index.create()` + paralel analiz
-- [x] `deep/__init__.py` — Thread-local parser + paralel analiz
-- [x] `dependencies.py` — 10 ayrı `rglob()` → tek `os.walk()` traversal
-- [x] `builder.py` — Paralel pipeline: Grup A (ts/git/deps/ann concurrent), Step 5 (labeling), Grup C (clang/deep concurrent), Step 8 (churn), Step 9 (CVE)
-- [x] `builder.py` — `_resolve_workers()`: workers=0 → `min(cpu_count, 8)`, workers=1 → sequential
-- [x] `cli.py` — `--workers/-w` ve `--include-cve/--no-cve` flag'leri
-
-### Adım 19: CVE Enrichment — OSV API entegrasyonu — DONE
-- [x] `schema.py` — `NodeLabel.VULNERABILITY`, `EdgeType.AFFECTED_BY`
-- [x] `enrichment/cve.py` — `CveEnricher.enrich(graph)` (OSV batch query, Vulnerability node + AFFECTED_BY edge)
-- [x] `enrichment/cve.py` — Version temizleme (^, ~, >=, v prefix kaldır)
-- [x] `enrichment/cve.py` — Network hatasında graceful skip
-- [x] `neo4j_store.py` — Vulnerability index (vuln_id)
-- [x] `archgraph_tool.py` — `_DESCRIPTION`'a Vulnerability node + AFFECTED_BY edge + `find_vulnerabilities()` metodu
-
-### Adım 20: Testler — DONE
-- [x] `test_cve.py` — 8 test (no deps, no version, unsupported ecosystem, successful enrichment, no vulns, network error, clean version, multiple deps batch)
-- [x] `test_builder.py` — `test_pipeline_parallel`: workers=1 vs workers=4 aynı sonucu üretir
-- [x] Toplam: 102 test (98 passed + 4 skipped)
-
----
-
-## Faz 5 — Performans & Graph Diff — DONE
-
-### Adım 21: Incremental Extraction — DONE
-- [x] `manifest.py` — `FileEntry`, `Manifest`, `ChangeSet`, I/O, scan, hash, changeset
-- [x] `config.py` — `incremental: bool = False`
-- [x] `builder.py` — `_build_incremental()`, `_run_incremental_steps()`, manifest save
-- [x] `treesitter.py` — `changed_files` param for filtered extraction
-- [x] `git.py` — `since_commit` param for incremental history
-- [x] `neo4j_store.py` — `delete_file_subgraph()` for deleted files
-- [x] `cli.py` — `--incremental/--no-incremental`, `--clear-db` deletes manifest
-
-### Adım 22: APOC Batch Import — DONE
-- [x] `neo4j_store.py` — `_detect_apoc()` (auto-detect, cached)
-- [x] `neo4j_store.py` — `_import_graph_apoc()` (node: parallel, edge: sequential)
-- [x] `neo4j_store.py` — `import_graph()` auto-routes to APOC when available
-
-### Adım 23: Graph Diff — DONE
-- [x] `schema.py` — `NodeChange`, `GraphDiff` dataclasses
-- [x] `schema.py` — `GraphData.diff()` method
-- [x] `neo4j_store.py` — `load_graph()` method
-- [x] `cli.py` — `archgraph diff REPO_PATH` command
-- [x] `archgraph_tool.py` — `diff_summary()` convenience method
-
-### Adım 24: Phase 5 Tests — DONE
-- [x] `test_manifest.py` — 18 tests (I/O, changeset, scan, deps hash, build)
-- [x] `test_builder.py` — +3 incremental tests (no-manifest fallback, modified, deleted)
-- [x] `test_schema.py` — +6 diff tests (added, removed, modified, edges, no-change, summary)
-- [x] `test_neo4j_mock.py` — 2 APOC detection tests
-- [x] Toplam: ~131 test (127 passed + 4 skipped)
-
----
-
-## Gelecek İyileştirmeler — DEFERRED
-
-### Ölçek Doğrulama
-- [x] Küçük proje testi (zlib ~50K LOC) — 3,577 node, 11,100 edge, 1,020 commit, 89 yazar
-- [ ] Orta proje testi (OpenSSL ~500K LOC)
-- [ ] Büyük proje testi (FFmpeg ~1M LOC)
-- [ ] Extraction süresi ve graph boyutu benchmarkları
-
+1. **Security-first** — Built for security auditing, not just code search
+2. **Taint analysis** — Tracks data flow from input sources to dangerous sinks
+3. **MIT license** — Free for commercial use
+4. **Python ecosystem** — Easy to extend and integrate
+5. **Neo4j power** — Full Cypher query language, mature graph database
+6. **MCP native** — First-class AI agent integration

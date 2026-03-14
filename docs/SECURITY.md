@@ -1,6 +1,6 @@
 # Security Analysis
 
-ArchGraph provides automated security labeling, taint tracking, and CVE enrichment.
+ArchGraph provides automated security labeling, taint tracking, CVE enrichment, and AI agent integration for security auditing.
 
 ## Automatic Security Labels
 
@@ -23,6 +23,45 @@ When deep analysis is enabled (`--include-clang` or `--include-deep`), ArchGraph
 2. Function parameters are conservatively marked tainted
 3. Variables assigned from tainted variables inherit the taint
 4. If a tainted variable flows into a `DANGEROUS_SINK`, a `TAINTS` edge is created
+
+## Security-Focused Clustering
+
+When `--include-clustering` is enabled, functions are grouped into functional communities. This helps identify security-critical modules:
+
+```cypher
+-- Find clusters with dangerous sinks
+MATCH (f:Function {is_dangerous_sink: true})-[:BELONGS_TO]->(c:Cluster)
+RETURN c.name, c.cohesion, count(f) AS sinks
+ORDER BY sinks DESC
+
+-- Find clusters that touch both input and sink
+MATCH (input:Function {is_input_source: true})-[:BELONGS_TO]->(c:Cluster)
+MATCH (sink:Function {is_dangerous_sink: true})-[:BELONGS_TO]->(c)
+RETURN c.name, collect(DISTINCT input.name) AS inputs, collect(DISTINCT sink.name) AS sinks
+```
+
+## Process Tracing for Security
+
+When `--include-process` is enabled, execution flows are traced from entry points. Processes are classified by security impact:
+
+| Type | Description |
+|------|-------------|
+| `data_flow` | Touches both input sources AND dangerous sinks ⚠️ |
+| `input_handler` | Touches input sources only |
+| `sink_caller` | Touches dangerous sinks only |
+| `computation` | Neither input nor sink |
+
+```cypher
+-- Find all data_flow processes (input → sink)
+MATCH (p:Process {type: "data_flow"})
+MATCH (f:Function)-[:PARTICIPATES_IN]->(p)
+RETURN p.name, p.entry_point, collect(f.name) AS functions
+
+-- Find security-critical execution paths
+MATCH (p:Process {type: "data_flow"})
+MATCH (f:Function {is_dangerous_sink: true})-[:PARTICIPATES_IN]->(p)
+RETURN p.name, f.name AS sink_function, p.step_count
+```
 
 ## CVE Enrichment
 
@@ -55,6 +94,23 @@ When enabled (`--include-cve`), ArchGraph queries the [OSV API](https://osv.dev)
 | `summary` | Brief description |
 | `severity` | CVSS score or severity string |
 | `aliases` | Comma-separated list of aliases (e.g., CVE, GHSA cross-references) |
+
+## Impact Analysis
+
+Use the `impact` command to understand blast radius before making changes:
+
+```bash
+# What depends on this function?
+archgraph impact "func:src/auth.c:validate:42" --direction upstream
+
+# Security impact of changes
+archgraph impact "func:src/net.c:recv_data:10" --direction both --depth 8
+```
+
+Or via MCP for AI agents:
+```
+Agent tool call: impact({symbol_id: "func:src/api.c:handle:42", direction: "both"})
+```
 
 ## Example Queries
 

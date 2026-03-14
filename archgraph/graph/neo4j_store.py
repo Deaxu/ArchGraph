@@ -31,6 +31,8 @@ _INDEXES: list[tuple[str, list[str]]] = [
     (NodeLabel.TAG, ["name"]),
     (NodeLabel.BASIC_BLOCK, ["function", "file"]),
     (NodeLabel.VULNERABILITY, ["vuln_id"]),
+    (NodeLabel.CLUSTER, ["name"]),
+    (NodeLabel.PROCESS, ["name"]),
 ]
 
 

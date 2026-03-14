@@ -122,6 +122,8 @@ def extract(
     workers: int,
     include_cve: bool,
     incremental: bool,
+    include_clustering: bool,
+    include_process: bool,
     clear_db: bool,
     verbose: bool,
 ) -> None:
@@ -159,6 +161,8 @@ def extract(
         workers=workers,
         include_cve=include_cve,
         incremental=incremental,
+        include_clustering=include_clustering,
+        include_process=include_process,
     )
 
         console.print(
@@ -184,6 +188,33 @@ def extract(
 
         console.print(table)
         console.print(f"\nExtraction took {build_time:.1f}s")
+
+        # Register repo in global registry
+        try:
+            from archgraph.registry import get_registry
+            registry = get_registry()
+            registry.register(
+                resolved_path,
+                neo4j_uri=neo4j_uri,
+                neo4j_database=neo4j_database,
+                languages=[l.strip() for l in languages.split(',')],
+                stats={'node_count': graph.node_count, 'edge_count': graph.edge_count},
+            )
+        except Exception as e:
+            console.print(f"[dim]Registry update failed: {e}[/dim]")
+
+        # Generate skills if requested
+        if include_clustering or include_process:
+            try:
+                from archgraph.graph.neo4j_store import Neo4jStore
+                from archgraph.skills import SkillGenerator
+                with Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database) as store:
+                    store.import_graph(graph)
+                    gen = SkillGenerator(store)
+                    gen.generate_skills(resolved_path)
+                    console.print("[green]Agent skills generated.[/green]")
+            except Exception:
+                pass
 
         # Import into Neo4j
         console.print(f"\n[bold]Importing into Neo4j[/bold] at {neo4j_uri}...")
@@ -429,6 +460,206 @@ def diff(
         if len(graph_diff.nodes_modified) > 20:
             console.print(f"  ... and {len(graph_diff.nodes_modified) - 20} more")
 
+
+
+
+# ── MCP Server Command ──────────────────────────────────────────────────────
+
+@main.command()
+@click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
+@click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
+@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
+def mcp(
+    neo4j_uri: str,
+    neo4j_user: str,
+    neo4j_password: str,
+    neo4j_database: str,
+) -> None:
+    """Start MCP server for AI agent integration."""
+    import asyncio
+    from archgraph.mcp.server import run_mcp_server
+
+    _setup_logging(False)
+    console.print("[bold]Starting ArchGraph MCP server...[/bold]")
+    console.print("Connect via: claude mcp add archgraph -- archgraph mcp")
+    asyncio.run(run_mcp_server(
+        neo4j_uri=neo4j_uri,
+        neo4j_user=neo4j_user,
+        neo4j_password=neo4j_password,
+        neo4j_database=neo4j_database,
+    ))
+
+
+# ── Web Dashboard Command ───────────────────────────────────────────────────
+
+@main.command()
+@click.option("--host", default="127.0.0.1", help="Bind host")
+@click.option("--port", "-p", default=8080, help="Bind port")
+@click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
+@click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
+@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
+def serve(
+    host: str,
+    port: int,
+    neo4j_uri: str,
+    neo4j_user: str,
+    neo4j_password: str,
+    neo4j_database: str,
+) -> None:
+    """Start web dashboard for interactive graph exploration."""
+    from archgraph.server.web import run_server
+
+    _setup_logging(False)
+    console.print(f"[bold]Starting ArchGraph dashboard at http://{host}:{port}[/bold]")
+    run_server(
+        host=host,
+        port=port,
+        neo4j_uri=neo4j_uri,
+        neo4j_user=neo4j_user,
+        neo4j_password=neo4j_password,
+        neo4j_database=neo4j_database,
+    )
+
+
+# ── Skills Generation Command ───────────────────────────────────────────────
+
+@main.command()
+@click.argument("repo_path")
+@click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
+@click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
+@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
+def skills(
+    repo_path: str,
+    neo4j_uri: str,
+    neo4j_user: str,
+    neo4j_password: str,
+    neo4j_database: str,
+) -> None:
+    """Generate AI agent skill files based on graph analysis."""
+    from archgraph.graph.neo4j_store import Neo4jStore
+    from archgraph.skills import SkillGenerator
+
+    _setup_logging(False)
+    resolved_path = Path(repo_path).resolve()
+
+    console.print(f"[bold]Generating skills for[/bold] [cyan]{resolved_path}[/cyan]...")
+
+    try:
+        with Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database) as store:
+            generator = SkillGenerator(store)
+            generated_paths = generator.generate_skills(resolved_path)
+
+            table = Table(title="Generated Skills")
+            table.add_column("File", style="cyan")
+            for p in generated_paths:
+                table.add_row(str(p.relative_to(resolved_path)))
+            console.print(table)
+            console.print(f"\n[green]{len(generated_paths)} skill files generated.[/green]")
+    except Exception as e:
+        console.print(f"[red]Failed: {e}[/red]")
+        sys.exit(1)
+
+
+# ── Registry Command ────────────────────────────────────────────────────────
+
+@main.command()
+@click.option("--format", "output_format", default="table", type=click.Choice(["table", "json"]))
+def repos(output_format: str) -> None:
+    """List all registered repositories."""
+    import json as json_mod
+    from archgraph.registry import get_registry
+
+    _setup_logging(False)
+    registry = get_registry()
+    entries = registry.list_repos()
+
+    if not entries:
+        console.print("[yellow]No repositories registered.[/yellow]")
+        console.print("Run [bold]archgraph extract[/bold] to index a repo.")
+        return
+
+    if output_format == "json":
+        console.print(json_mod.dumps([e.to_dict() for e in entries], indent=2))
+    else:
+        table = Table(title="Registered Repositories")
+        table.add_column("Name", style="cyan")
+        table.add_column("Path", style="green")
+        table.add_column("Languages", style="yellow")
+        table.add_column("Nodes", justify="right")
+        table.add_column("Edges", justify="right")
+        table.add_column("Indexed", style="dim")
+        for e in entries:
+            table.add_row(
+                e.name,
+                e.path[:50] + "..." if len(e.path) > 50 else e.path,
+                ", ".join(e.languages[:3]) if e.languages else "-",
+                str(e.node_count),
+                str(e.edge_count),
+                e.indexed_at[:10] if e.indexed_at else "-",
+            )
+        console.print(table)
+
+
+# ── Impact Analysis Command ─────────────────────────────────────────────────
+
+@main.command()
+@click.argument("symbol_id")
+@click.option("--direction", "-d", default="upstream", type=click.Choice(["upstream", "downstream", "both"]))
+@click.option("--depth", default=5, help="Max traversal depth")
+@click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
+@click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
+@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
+def impact_cmd(
+    symbol_id: str,
+    direction: str,
+    depth: int,
+    neo4j_uri: str,
+    neo4j_user: str,
+    neo4j_password: str,
+    neo4j_database: str,
+) -> None:
+    """Analyze blast radius of a function symbol."""
+    from archgraph.graph.neo4j_store import Neo4jStore
+    from archgraph.tool.impact import ImpactAnalyzer
+
+    _setup_logging(False)
+
+    try:
+        with Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database) as store:
+            analyzer = ImpactAnalyzer(store)
+            result = analyzer.analyze_impact(symbol_id, direction, depth)
+
+            console.print(f"\n[bold]Impact Analysis[/bold] — [cyan]{symbol_id}[/cyan]")
+            console.print(f"Direction: {direction} | Confidence: {result['confidence']}")
+
+            if result["immediate"]:
+                console.print(f"\n[green]Immediate (depth 1):[/green]")
+                for item in result["immediate"][:10]:
+                    console.print(f"  -> {item['name']} ({item.get('file', '')})")
+
+            if result["downstream"]:
+                console.print(f"\n[yellow]Downstream (depth 2):[/yellow]")
+                for item in result["downstream"][:10]:
+                    console.print(f"  -> {item['name']} ({item.get('file', '')})")
+
+            if result["transitive"]:
+                console.print(f"\n[dim]Transitive (depth 3+):[/dim]")
+                for item in result["transitive"][:10]:
+                    console.print(f"  -> {item['name']} ({item.get('file', '')})")
+
+            if result["security_flags"]:
+                console.print(f"\n[red]Warning - Security flags:[/red]")
+                for flag in result["security_flags"]:
+                    console.print(f"  !! {flag}")
+
+            console.print(f"\nTotal affected: {result['total_affected']}")
+    except Exception as e:
+        console.print(f"[red]Failed: {e}[/red]")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
