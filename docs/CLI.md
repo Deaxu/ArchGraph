@@ -17,7 +17,7 @@ archgraph extract REPO_PATH [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `-l, --languages` | `c,cpp,rust,java,go` | Comma-separated languages to extract |
+| `-l, --languages` | `auto` | Comma-separated languages or `auto` to detect |
 | `-b, --branch` | — | Branch to clone (for git URLs) |
 | `-d, --depth` | — | Clone depth (for git URLs) |
 | `--neo4j-uri` | `bolt://localhost:7687` | Neo4j bolt URI |
@@ -244,6 +244,73 @@ archgraph impact "func:src/api.c:handle:42" --direction downstream
 # Both directions
 archgraph impact "func:src/auth.c:validate:10" --direction both --depth 8
 ```
+
+---
+
+### `export` ⭐ NEW
+
+Export code graph to JSON, GraphML, or CSV format.
+
+```bash
+archgraph export REPO_PATH [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--format` | `json` | Export format: `json`, `graphml`, `csv` |
+| `-o, --output` | auto | Output file/directory path |
+| `-l, --languages` | `auto` | Languages (auto=detect) |
+| `-w, --workers` | `0` | Worker threads |
+
+**Examples:**
+
+```bash
+# Export as JSON
+archgraph export /path/to/repo
+
+# Export as GraphML (for Gephi, yEd)
+archgraph export /path/to/repo --format graphml -o graph.graphml
+
+# Export as CSV (nodes.csv + edges.csv)
+archgraph export /path/to/repo --format csv -o output_dir/
+```
+
+---
+
+### `report` ⭐ NEW
+
+Generate a single-file HTML security report.
+
+```bash
+archgraph report REPO_PATH [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-o, --output` | `archgraph_report.html` | Output HTML file path |
+| `--neo4j-uri` | `bolt://localhost:7687` | Neo4j bolt URI |
+
+**Example:**
+
+```bash
+# Generate report
+archgraph report /path/to/repo
+
+# Custom output path
+archgraph report /path/to/repo -o security_report.html
+```
+
+The report includes:
+- Graph statistics
+- High risk functions (score > 50)
+- Input sources and dangerous sinks
+- Taint paths (input → sink)
+- Vulnerabilities (CVEs)
+- Clusters and processes
 
 ---
 

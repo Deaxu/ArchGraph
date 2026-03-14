@@ -190,8 +190,9 @@ archgraph query "MATCH (f:Function) WHERE f.is_exported = true RETURN f.name, f.
 ## Highlights
 
 - **10 languages** — C, C++, Rust, Java, Go, JavaScript, TypeScript, Kotlin, Swift, Objective-C
+- **Auto-detect** — Automatically detects languages from file extensions
 - **Deep analysis** — CFG, data flow, taint tracking via libclang (C/C++) and tree-sitter
-- **Security auditing** — Input/sink detection, taint propagation, unsafe patterns, CVE enrichment
+- **Security auditing** — Input/sink detection, risk scores (0-100), CVE enrichment
 - **AI Agent ready** — MCP server with 7 tools and 4 resources for any agent framework
 - **Clustering** — Functional community detection with cohesion scores
 - **Process tracing** — Execution flow analysis from entry points
@@ -199,6 +200,8 @@ archgraph query "MATCH (f:Function) WHERE f.is_exported = true RETURN f.name, f.
 - **Web dashboard** — Interactive graph exploration at `http://localhost:8080`
 - **Git integration** — Commit history, change stats, security fix detection
 - **Graph diff** — Compare repo state against stored graph
+- **Export formats** — JSON, GraphML, CSV for external tools
+- **HTML reports** — Single-file security reports, shareable without Neo4j
 - **Incremental extraction** — Only re-extract changed files
 - **Parallel pipeline** — Multi-threaded extraction with 11 steps
 - **Multi-repo registry** — Manage multiple indexed repositories
@@ -224,14 +227,14 @@ pip install archgraph[dev]
 ## Quick Start
 
 ```bash
-# Basic extraction
-archgraph extract /path/to/repo -l c,cpp,rust -w 4
+# Basic extraction (auto-detects languages)
+archgraph extract /path/to/repo -w 4
 
 # From GitHub URL
-archgraph extract https://github.com/madler/zlib -l c,cpp --clear-db
+archgraph extract https://github.com/madler/zlib --clear-db
 
 # Full analysis with security features
-archgraph extract /path/to/repo -l c,cpp --include-cve --include-clustering --include-process
+archgraph extract /path/to/repo --include-cve --include-clustering --include-process
 
 # Run Cypher query
 archgraph query "MATCH (f:Function {is_input_source: true}) RETURN f.name LIMIT 10"
@@ -247,6 +250,13 @@ archgraph skills /path/to/repo
 
 # Impact analysis
 archgraph impact "func:src/main.c:main:1" --direction both --depth 5
+
+# Export graph (JSON, GraphML, or CSV)
+archgraph export /path/to/repo --format json
+archgraph export /path/to/repo --format graphml -o graph.graphml
+
+# Generate HTML security report
+archgraph report /path/to/repo
 
 # List indexed repos
 archgraph repos

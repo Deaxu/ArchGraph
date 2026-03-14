@@ -4,7 +4,7 @@
 
 ```
 archgraph/
-├── cli.py                  # Click CLI — extract, query, stats, diff, mcp, serve, skills, impact, repos
+├── cli.py                  # Click CLI — extract, query, stats, diff, mcp, serve, skills, impact, repos, export, report
 ├── config.py               # Constants, language maps, security patterns, ExtractConfig
 ├── extractors/
 │   ├── base.py             # BaseExtractor ABC
@@ -12,7 +12,7 @@ archgraph/
 │   ├── git.py              # Commit history + numstat, author, tags, security fix detection
 │   ├── dependencies.py     # 10 package manager parsers (single os.walk traversal)
 │   ├── annotations.py      # TODO/HACK/UNSAFE/FIXME/BUG/XXX/SECURITY/VULNERABILITY
-│   ├── security_labels.py  # Automatic security labeling
+│   ├── security_labels.py  # Automatic security labeling + risk scoring (0-100)
 │   ├── clang.py            # libclang deep analysis (CFG, data flow, taint, macro, typedef)
 │   └── deep/               # Tree-sitter deep analysis engine
 │       ├── engine.py       # CFG builder, reaching definitions, data flow, taint
@@ -28,11 +28,13 @@ archgraph/
 │   ├── clustering.py       # Community detection (greedy modularity)
 │   └── process.py          # Execution flow tracing from entry points
 ├── mcp/
-│   └── server.py           # MCP server — 7 tools, 4 resources for AI agents
+│   └── server.py           # MCP server — 7 tools, 4 resources, TTL cache
 ├── server/
 │   └── web.py              # FastAPI web dashboard with interactive UI
 ├── tool/
 │   └── impact.py           # Impact analysis — blast radius computation
+├── export.py               # Graph export — JSON, GraphML, CSV
+├── report.py               # HTML security report generation
 ├── registry.py             # Multi-repo global registry (~/.archgraph/registry.json)
 ├── search.py               # Hybrid search — BM25 + graph relevance + RRF
 ├── skills.py               # Agent skill file generation
