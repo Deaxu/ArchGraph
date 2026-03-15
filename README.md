@@ -5,21 +5,21 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
-  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Server-green.svg" alt="MCP Server"/></a>
+  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Built%20for%20Agents-green.svg" alt="Built for AI Agents via MCP"/></a>
   <img src="https://img.shields.io/badge/tests-137%20passed-brightgreen.svg" alt="Tests"/>
 </p>
 
 <p align="center">
-  <b>Security-first code intelligence for AI agents.</b><br/>
+  <b>Purpose-built code intelligence for AI coding agents.</b><br/>
   Parses <b>10 languages</b>, builds a knowledge graph with <b>taint analysis</b>, <b>CVE detection</b>, and <b>clustering</b>.<br/>
-  Connect to any AI agent via <b>MCP</b> — Cursor, Claude Code, Windsurf, and more.
+  Expose to any agent via <b>MCP</b> — Cursor, Claude Code, Windsurf, and more.
 </p>
 
 ---
 
 ## Why ArchGraph?
 
-Other tools help you *understand* code. **ArchGraph helps you *secure* it.**
+When an AI agent reads your codebase, it sees **text**. ArchGraph gives it a **structured knowledge graph** — taint paths, call graphs, data flows, and vulnerability metadata that plain code search can never provide.
 
 | | **ArchGraph** | **Code Search** | **AST Parsers** | **SAST Tools** |
 |--|---------------|-----------------|-----------------|----------------|
@@ -63,7 +63,7 @@ archgraph extract /path/to/repo --neo4j-password archgraph
 
 ## 🤖 AI Agent Integration (MCP)
 
-ArchGraph exposes 7 tools and 4 resources to any MCP-compatible agent.
+This is the primary way ArchGraph is designed to be used. It exposes 7 tools and 4 resources to any MCP-compatible agent.
 
 ### Setup
 
@@ -147,6 +147,22 @@ archgraph extract . --include-cve    # Queries OSV API automatically
 ---
 
 ## Use Cases
+
+### 🤖 For AI Agents
+
+```bash
+# Index the repo, start MCP server
+archgraph extract . --include-cve --include-clustering
+archgraph mcp
+```
+
+Your agent can now ask questions like:
+- *"What are the security risks in the auth module?"*
+- *"Show me all tainted paths from user input to database queries"*
+- *"What's the blast radius of changing `parse_config()`?"*
+- *"Which functions handle sensitive data without encryption?"*
+
+The agent gets structured graph data — not grep results.
 
 ### Security Audit
 ```bash
