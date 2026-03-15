@@ -31,7 +31,6 @@ Other tools help you *understand* code. **ArchGraph helps you *secure* it.**
 | **Execution Tracing** | ✅ Entry → Sink flows | ❌ | ❌ | ❌ |
 | **Export (JSON/GraphML)** | ✅ | ❌ | ❌ | Partial |
 | **Local-first** | ✅ Neo4j | Varies | ✅ | Varies |
-| **License** | MIT | Varies | Varies | Often proprietary |
 
 ---
 
