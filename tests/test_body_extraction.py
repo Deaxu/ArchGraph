@@ -343,3 +343,94 @@ class TestArchGraphToolSource:
     def test_description_mentions_body(self):
         from archgraph.tool.archgraph_tool import _DESCRIPTION
         assert "body" in _DESCRIPTION
+
+
+# ── Multi-Language Body Tests ─────────────────────────────────────────────────
+
+
+@pytest.fixture
+def tmp_go_project(tmp_path):
+    """Go file with a function."""
+    src = tmp_path / "main.go"
+    src.write_text(textwrap.dedent("""\
+        package main
+
+        func add(a int, b int) int {
+            return a + b
+        }
+    """))
+    return tmp_path
+
+
+@pytest.fixture
+def tmp_ts_project(tmp_path):
+    """TypeScript file with a function and class."""
+    src = tmp_path / "app.ts"
+    src.write_text(textwrap.dedent("""\
+        export function greet(name: string): string {
+            return `Hello, ${name}!`;
+        }
+
+        export class Counter {
+            private count: number = 0;
+
+            increment(): void {
+                this.count++;
+            }
+
+            getCount(): number {
+                return this.count;
+            }
+        }
+    """))
+    return tmp_path
+
+
+class TestMultiLanguageBody:
+    """Test body extraction across multiple languages."""
+
+    def test_go_function_body(self, tmp_go_project):
+        ext = TreeSitterExtractor(languages=["go"], include_body=True)
+        graph = ext.extract(tmp_go_project)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.FUNCTION and node.properties.get("name") == "add":
+                body = node.properties.get("body", "")
+                assert "func add(a int, b int) int" in body
+                assert "return a + b" in body
+                return
+        pytest.fail("Go function 'add' not found")
+
+    @pytest.mark.skipif(
+        not _ts_lang_available("typescript"),
+        reason="tree-sitter-typescript not installed",
+    )
+    def test_ts_function_body(self, tmp_ts_project):
+        ext = TreeSitterExtractor(languages=["typescript"], include_body=True)
+        graph = ext.extract(tmp_ts_project)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.FUNCTION and node.properties.get("name") == "greet":
+                body = node.properties.get("body", "")
+                assert "function greet" in body
+                assert "return" in body
+                return
+        pytest.fail("TS function 'greet' not found")
+
+    @pytest.mark.skipif(
+        not _ts_lang_available("typescript"),
+        reason="tree-sitter-typescript not installed",
+    )
+    def test_ts_class_shell(self, tmp_ts_project):
+        ext = TreeSitterExtractor(languages=["typescript"], include_body=True)
+        graph = ext.extract(tmp_ts_project)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.CLASS and node.properties.get("name") == "Counter":
+                body = node.properties.get("body", "")
+                assert "class Counter" in body
+                assert "increment()" in body
+                assert "getCount()" in body
+                assert "this.count++" not in body
+                return
+        pytest.fail("TS class 'Counter' not found")

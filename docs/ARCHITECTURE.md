@@ -115,11 +115,11 @@ If the Neo4j APOC plugin is detected, `import_graph()` automatically uses `apoc.
 | Label | Description | Key Properties |
 |-------|-------------|----------------|
 | File | Source file | path, language, size, lines, hash, churn_count, last_modified |
-| Function | Function/method | name, file, line_start, line_end, params, return_type, is_exported, is_input_source, is_dangerous_sink, is_allocator, is_crypto, is_parser, is_unsafe |
-| Class | Class definition | name, file, line_start, line_end, is_abstract |
-| Struct | Struct/record | name, file, line_start |
-| Interface | Interface/trait/protocol | name, file, line_start |
-| Enum | Enumeration | name, file |
+| Function | Function/method | name, file, line_start, line_end, params, return_type, body, body_lines, body_truncated, is_exported, is_input_source, is_dangerous_sink, is_allocator, is_crypto, is_parser, is_unsafe |
+| Class | Class definition | name, file, line_start, line_end, body (shell), body_lines, is_abstract |
+| Struct | Struct/record | name, file, line_start, body, body_lines |
+| Interface | Interface/trait/protocol | name, file, line_start, body, body_lines |
+| Enum | Enumeration | name, file, body, body_lines |
 | Module | Module/namespace/package | name, path |
 | Macro | Preprocessor macro | name, file, body |
 | Parameter | Function parameter | name, index, function |
@@ -184,6 +184,22 @@ Examples:
 - `_id` property has a unique constraint
 - Use `MATCH (n:_Node {_id: $id})` for exact lookups
 - `funcref:` prefix indicates an unresolved call target (no definition in codebase)
+
+### Code Body Storage
+
+Nodes carry their source code as a `body` property (enabled by default, opt-out via `--no-body`):
+
+- **Function**: Full source text including signature and body
+- **Class**: Shell — fields and method signatures preserved, method bodies replaced with `{ ... }`
+- **Struct/Interface/Enum**: Full source text
+- **Macro**: Already stores `body` (unchanged)
+
+Properties:
+- `body` (string): Source code text
+- `body_lines` (int): Line count
+- `body_truncated` (bool): True if truncated at `max_body_size` (default 50KB)
+
+Access via the `source` tool (MCP/rlm-agent) or Cypher: `MATCH (f:Function {_id: $id}) RETURN f.body`
 
 ## ExtractConfig
 
