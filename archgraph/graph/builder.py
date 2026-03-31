@@ -128,7 +128,11 @@ class GraphBuilder:
         # Step 1: Tree-sitter — only changed files
         if changed:
             logger.info("Incremental tree-sitter: %d files", len(changed))
-            ts_ext = TreeSitterExtractor(languages=self.config.languages)
+            ts_ext = TreeSitterExtractor(
+                languages=self.config.languages,
+                include_body=self.config.include_body,
+                max_body_size=self.config.max_body_size,
+            )
             ts_graph = ts_ext.extract(repo, workers=workers, changed_files=changed)
             graph.merge(ts_graph)
 
@@ -227,7 +231,11 @@ class GraphBuilder:
 
         # Step 1: Tree-sitter structural extraction
         logger.info("Step 1/%d: Tree-sitter extraction", total_steps)
-        ts_extractor = TreeSitterExtractor(languages=self.config.languages)
+        ts_extractor = TreeSitterExtractor(
+            languages=self.config.languages,
+            include_body=self.config.include_body,
+            max_body_size=self.config.max_body_size,
+        )
         ts_graph = ts_extractor.extract(repo)
         graph.merge(ts_graph)
         logger.info(
@@ -539,7 +547,11 @@ class GraphBuilder:
     # ── Step methods (each returns its own GraphData) ───────────────────
 
     def _step_treesitter(self, repo: Path, workers: int) -> GraphData:
-        ts_extractor = TreeSitterExtractor(languages=self.config.languages)
+        ts_extractor = TreeSitterExtractor(
+            languages=self.config.languages,
+            include_body=self.config.include_body,
+            max_body_size=self.config.max_body_size,
+        )
         return ts_extractor.extract(repo, workers=workers)
 
     def _step_git(self, repo: Path) -> GraphData:

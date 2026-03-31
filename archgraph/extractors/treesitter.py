@@ -154,8 +154,15 @@ def _find_child_by_field(node: ts.Node, field_name: str) -> ts.Node | None:
 class TreeSitterExtractor(BaseExtractor):
     """Extracts code structure using tree-sitter grammars."""
 
-    def __init__(self, languages: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        languages: list[str] | None = None,
+        include_body: bool = True,
+        max_body_size: int = 51_200,
+    ) -> None:
         self._languages = languages or ["c", "cpp", "rust", "java", "go"]
+        self._include_body = include_body
+        self._max_body_size = max_body_size
         self._parsers: dict[str, ts.Parser] = {}
         self._ts_languages: dict[str, ts.Language] = {}
         self._thread_local = threading.local()
@@ -198,6 +205,20 @@ class TreeSitterExtractor(BaseExtractor):
             ts_lang = self._ts_languages[lang]
             parsers[lang] = ts.Parser(ts_lang)
         return parsers[lang]
+
+    def _truncate_body(self, text: str) -> tuple[str, bool]:
+        """Truncate body if it exceeds max_body_size. Returns (text, was_truncated)."""
+        encoded = text.encode("utf-8")
+        if len(encoded) <= self._max_body_size:
+            return text, False
+        truncated = encoded[:self._max_body_size]
+        last_nl = truncated.rfind(b"\n")
+        if last_nl > 0:
+            truncated = truncated[:last_nl]
+        total_lines = text.count("\n") + 1
+        decoded = truncated.decode("utf-8", errors="replace")
+        decoded += f"\n// ... [truncated: {total_lines} total lines]"
+        return decoded, True
 
     def extract(self, repo_path: Path, **kwargs: object) -> GraphData:
         """Extract graph from all supported source files in the repo."""
@@ -433,9 +454,7 @@ class TreeSitterExtractor(BaseExtractor):
         text = _node_text(node, source)
         is_exported = self._is_exported(text, lang)
 
-        graph.add_node(
-            func_id,
-            NodeLabel.FUNCTION,
+        props: dict[str, Any] = dict(
             name=name,
             file=rel_path,
             line_start=node.start_point[0] + 1,
@@ -444,6 +463,16 @@ class TreeSitterExtractor(BaseExtractor):
             return_type=return_type,
             is_exported=is_exported,
         )
+
+        if self._include_body:
+            body_text = _node_text(node, source)
+            body_text, truncated = self._truncate_body(body_text)
+            props["body"] = body_text
+            props["body_lines"] = body_text.count("\n") + 1
+            if truncated:
+                props["body_truncated"] = True
+
+        graph.add_node(func_id, NodeLabel.FUNCTION, **props)
 
         # Extract parameters as nodes
         self._extract_parameters(node, source, lang, func_id, graph)
