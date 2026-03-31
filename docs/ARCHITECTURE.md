@@ -53,6 +53,8 @@ The `GraphBuilder` orchestrates 11 extraction steps. It supports two modes:
 ```
 Group A (concurrent):  Step 1 (tree-sitter) | Step 2 (git) | Step 3 (deps) | Step 4 (annotations)
                                     ↓
+Step 4.5:              Call resolution (resolves funcref: → func: definitions)
+                                    ↓
 Step 5:                Security labeling (needs merged Function nodes)
                                     ↓
 Group C (concurrent):  Step 6 (clang) | Step 7 (deep analysis)
@@ -65,6 +67,21 @@ Step 11:               Process tracing (execution flows from entry points)
                                     ↓
                        Deduplication → Final graph
 ```
+
+### Call Resolution (Step 4.5)
+
+After all structural extraction (tree-sitter, git, deps, annotations) is merged,
+the `CallResolver` resolves unresolved `funcref:` call targets to actual function
+definitions using a 4-level fallback chain:
+
+1. **Qualifier match** — `funcref:Counter.increment` resolves via Class CONTAINS Function
+2. **Intra-file match** — caller and callee in the same file, line proximity tiebreak
+3. **Import match** — follow named imports to the source file's function definitions
+4. **Global unique** — if only one function with that name exists in the repo
+
+Resolved edges get `resolved: true` property. Unresolved calls (external/stdlib)
+remain as `funcref:` nodes. CALLS edges also carry a `qualifier` property when
+the call had a receiver (e.g., `Counter` for `Counter.increment()`).
 
 ### Incremental Extraction
 
