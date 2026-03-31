@@ -6,6 +6,14 @@ ArchGraph integrates with **any MCP-compatible AI agent** — Cursor, Claude Cod
 
 The MCP (Model Context Protocol) server exposes ArchGraph's knowledge graph to AI agents through a standardized interface.
 
+### Prerequisites
+
+Neo4j must be running before starting the MCP server:
+
+```bash
+docker compose up -d neo4j           # password: archgraph
+```
+
 ### Starting the Server
 
 ```bash

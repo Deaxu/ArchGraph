@@ -43,7 +43,7 @@ class Neo4jStore:
         self,
         uri: str = "bolt://localhost:7687",
         user: str = "neo4j",
-        password: str = "neo4j",
+        password: str = "archgraph",
         database: str = "neo4j",
     ) -> None:
         self._uri = uri

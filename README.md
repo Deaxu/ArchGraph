@@ -6,7 +6,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Built%20for%20Agents-green.svg" alt="Built for AI Agents via MCP"/></a>
-  <img src="https://img.shields.io/badge/tests-137%20passed-brightgreen.svg" alt="Tests"/>
+  <img src="https://img.shields.io/badge/tests-159%20collected%20·%20137%20passed-brightgreen.svg" alt="Tests"/>
 </p>
 
 <p align="center">
@@ -40,6 +40,9 @@ When an AI agent reads your codebase, it sees **text**. ArchGraph gives it a **s
 # Install
 pip install archgraph
 
+# Start Neo4j (required)
+docker compose up -d neo4j           # password: archgraph
+
 # Extract (auto-detects languages)
 archgraph extract /path/to/repo -w 4
 
@@ -53,12 +56,6 @@ archgraph serve --port 8080
 archgraph report /path/to/repo
 ```
 
-**With Docker (Neo4j included):**
-```bash
-docker compose up -d neo4j           # password: archgraph
-archgraph extract /path/to/repo --neo4j-password archgraph
-```
-
 ---
 
 ## 🤖 AI Agent Integration (MCP)
@@ -68,6 +65,9 @@ This is the primary way ArchGraph is designed to be used. It exposes 7 tools and
 ### Setup
 
 ```bash
+# Start Neo4j (if not already running)
+docker compose up -d neo4j
+
 # Index your repo
 archgraph extract . --include-cve --include-clustering
 

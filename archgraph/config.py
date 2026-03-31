@@ -181,7 +181,7 @@ class ExtractConfig:
     languages: list[str] = field(default_factory=lambda: ["c", "cpp", "rust", "java", "go"])
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "neo4j"
+    neo4j_password: str = "archgraph"
     neo4j_database: str = "neo4j"
     include_git: bool = True
     include_deps: bool = True

@@ -95,7 +95,7 @@ def main() -> None:
               envvar="ARCHGRAPH_NEO4J_URI", help="Neo4j bolt URI")
 @click.option("--neo4j-user", default="neo4j",
               envvar="ARCHGRAPH_NEO4J_USER", help="Neo4j username")
-@click.option("--neo4j-password", default="neo4j",
+@click.option("--neo4j-password", default="archgraph",
               envvar="ARCHGRAPH_NEO4J_PASSWORD", help="Neo4j password")
 @click.option("--neo4j-database", default="neo4j",
               envvar="ARCHGRAPH_NEO4J_DATABASE", help="Neo4j database name")
@@ -273,7 +273,7 @@ def extract(
               envvar="ARCHGRAPH_NEO4J_URI", help="Neo4j bolt URI")
 @click.option("--neo4j-user", default="neo4j",
               envvar="ARCHGRAPH_NEO4J_USER", help="Neo4j username")
-@click.option("--neo4j-password", default="neo4j",
+@click.option("--neo4j-password", default="archgraph",
               envvar="ARCHGRAPH_NEO4J_PASSWORD", help="Neo4j password")
 @click.option("--neo4j-database", default="neo4j",
               envvar="ARCHGRAPH_NEO4J_DATABASE", help="Neo4j database name")
@@ -312,7 +312,7 @@ def query(
 @main.command()
 @click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
 @click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
-@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")
 @click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
 def stats(
     neo4j_uri: str,
@@ -345,7 +345,7 @@ def stats(
 @main.command()
 @click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
 @click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
-@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")
 @click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
 def schema(
     neo4j_uri: str,
@@ -378,7 +378,7 @@ def schema(
               envvar="ARCHGRAPH_NEO4J_URI", help="Neo4j bolt URI")
 @click.option("--neo4j-user", default="neo4j",
               envvar="ARCHGRAPH_NEO4J_USER", help="Neo4j username")
-@click.option("--neo4j-password", default="neo4j",
+@click.option("--neo4j-password", default="archgraph",
               envvar="ARCHGRAPH_NEO4J_PASSWORD", help="Neo4j password")
 @click.option("--neo4j-database", default="neo4j",
               envvar="ARCHGRAPH_NEO4J_DATABASE", help="Neo4j database name")
@@ -489,7 +489,7 @@ def diff(
 @main.command()
 @click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
 @click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
-@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")
 @click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
 def mcp(
     neo4j_uri: str,
@@ -519,7 +519,7 @@ def mcp(
 @click.option("--port", "-p", default=8080, help="Bind port")
 @click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
 @click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
-@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")
 @click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
 def serve(
     host: str,
@@ -550,7 +550,7 @@ def serve(
 @click.argument("repo_path")
 @click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
 @click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
-@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")
 @click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
 def skills(
     repo_path: str,
@@ -632,7 +632,7 @@ def repos(output_format: str) -> None:
 @click.option("--depth", default=5, help="Max traversal depth")
 @click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
 @click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
-@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")
 @click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
 def _impact(
     symbol_id: str,
@@ -720,7 +720,7 @@ def export(repo_path, export_format, output, languages, workers):
 @click.option("--output", "-o", default=None, help="Output HTML path")
 @click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
 @click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
-@click.option("--neo4j-password", default="neo4j", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")
 @click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
 def report(repo_path, output, neo4j_uri, neo4j_user, neo4j_password, neo4j_database):
     """Generate HTML security report."""

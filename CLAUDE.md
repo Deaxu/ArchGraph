@@ -13,7 +13,7 @@ pip install -e ".[dev]"
 ## Testler
 
 ```bash
-# Tüm testler (102 test — 98 passed, 4 skipped)
+# Tüm testler (159 collected — 137 passed, 22 skipped)
 pytest tests/ -v
 ```
 

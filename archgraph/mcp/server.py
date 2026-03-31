@@ -195,7 +195,7 @@ class ArchGraphMCP:
         self,
         neo4j_uri: str = "bolt://localhost:7687",
         neo4j_user: str = "neo4j",
-        neo4j_password: str = "neo4j",
+        neo4j_password: str = "archgraph",
         neo4j_database: str = "neo4j",
     ) -> None:
         self._store = Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database)
