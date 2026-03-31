@@ -95,3 +95,64 @@ class TestFunctionBody:
         for node in graph.nodes:
             if node.label == NodeLabel.FUNCTION and not node.id.startswith("funcref:"):
                 assert "body" not in node.properties
+
+
+# ── Class Shell Tests ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def tmp_java_project(tmp_path):
+    """Java file with a class containing methods."""
+    src = tmp_path / "App.java"
+    src.write_text(textwrap.dedent("""\
+        public class App {
+            private int count;
+
+            public App(int initial) {
+                this.count = initial;
+            }
+
+            public int getCount() {
+                return this.count;
+            }
+
+            public void increment() {
+                this.count++;
+            }
+        }
+    """))
+    return tmp_path
+
+
+class TestClassShell:
+    """Test class shell extraction - method bodies replaced with { ... }."""
+
+    def test_java_class_shell(self, tmp_java_project):
+        ext = TreeSitterExtractor(languages=["java"], include_body=True)
+        graph = ext.extract(tmp_java_project)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.CLASS and node.properties.get("name") == "App":
+                body = node.properties.get("body", "")
+                # Should contain class header and field
+                assert "class App" in body
+                assert "private int count" in body
+                # Method signatures should be present
+                assert "public App(int initial)" in body
+                assert "public int getCount()" in body
+                assert "public void increment()" in body
+                # Method bodies should be replaced with ...
+                assert "this.count = initial" not in body
+                assert "return this.count" not in body
+                assert "this.count++" not in body
+                assert "..." in body
+                return
+        pytest.fail("Class 'App' not found")
+
+    def test_class_no_body_when_disabled(self, tmp_java_project):
+        ext = TreeSitterExtractor(languages=["java"], include_body=False)
+        graph = ext.extract(tmp_java_project)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.CLASS:
+                assert "body" not in node.properties

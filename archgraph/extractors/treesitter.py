@@ -138,6 +138,21 @@ def _node_text(node: ts.Node, source: bytes) -> str:
     return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
 
 
+def _iter_descendants(node: ts.Node) -> list[ts.Node]:
+    """Iterate all descendant nodes."""
+    result: list[ts.Node] = []
+    for child in node.children:
+        result.append(child)
+        result.extend(_iter_descendants(child))
+    return result
+
+
+_BODY_COMPOUND_TYPES = frozenset({
+    "compound_statement", "block", "function_body",
+    "statement_block", "class_body", "declaration_list",
+})
+
+
 def _find_child_by_type(node: ts.Node, *types: str) -> ts.Node | None:
     """Find the first child of node matching one of the given types."""
     for child in node.children:
@@ -505,10 +520,54 @@ class TreeSitterExtractor(BaseExtractor):
             is_abstract=is_abstract,
         )
 
+        if self._include_body:
+            lang_types = _LANG_NODE_TYPES.get(lang, {})
+            shell = self._extract_class_shell(node, source, lang, lang_types)
+            shell, truncated = self._truncate_body(shell)
+            graph.nodes[-1].properties["body"] = shell
+            graph.nodes[-1].properties["body_lines"] = shell.count("\n") + 1
+            if truncated:
+                graph.nodes[-1].properties["body_truncated"] = True
+
         # Extract inheritance
         self._extract_inheritance(node, source, lang, cls_id, rel_path, graph)
 
         return cls_id
+
+    def _extract_class_shell(
+        self,
+        node: ts.Node,
+        source: bytes,
+        lang: str,
+        lang_types: dict[str, list[str]],
+    ) -> str:
+        """Extract class source with method bodies replaced by { ... }."""
+        class_bytes = bytearray(source[node.start_byte:node.end_byte])
+        offset = node.start_byte
+
+        func_types = lang_types.get("function_def", [])
+        replacements: list[tuple[int, int]] = []
+
+        for desc in _iter_descendants(node):
+            if desc.type not in func_types:
+                continue
+            body = desc.child_by_field_name("body")
+            if body is None:
+                for child in desc.children:
+                    if child.type in _BODY_COMPOUND_TYPES:
+                        body = child
+                        break
+            if body is None:
+                continue
+            inner_start = body.start_byte + 1 - offset
+            inner_end = body.end_byte - 1 - offset
+            if inner_start < inner_end:
+                replacements.append((inner_start, inner_end))
+
+        for start, end in sorted(replacements, reverse=True):
+            class_bytes[start:end] = b" ... "
+
+        return class_bytes.decode("utf-8", errors="replace")
 
     def _extract_struct(
         self,
