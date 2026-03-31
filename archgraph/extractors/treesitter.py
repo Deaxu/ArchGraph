@@ -589,6 +589,13 @@ class TreeSitterExtractor(BaseExtractor):
             file=rel_path,
             line_start=node.start_point[0] + 1,
         )
+        if self._include_body:
+            body_text = _node_text(node, source)
+            body_text, truncated = self._truncate_body(body_text)
+            graph.nodes[-1].properties["body"] = body_text
+            graph.nodes[-1].properties["body_lines"] = body_text.count("\n") + 1
+            if truncated:
+                graph.nodes[-1].properties["body_truncated"] = True
         return struct_id
 
     def _extract_enum(
@@ -608,6 +615,13 @@ class TreeSitterExtractor(BaseExtractor):
             name=name,
             file=rel_path,
         )
+        if self._include_body:
+            body_text = _node_text(node, source)
+            body_text, truncated = self._truncate_body(body_text)
+            graph.nodes[-1].properties["body"] = body_text
+            graph.nodes[-1].properties["body_lines"] = body_text.count("\n") + 1
+            if truncated:
+                graph.nodes[-1].properties["body_truncated"] = True
         graph.add_edge(file_id, enum_id, EdgeType.CONTAINS)
         return enum_id
 
@@ -628,6 +642,13 @@ class TreeSitterExtractor(BaseExtractor):
             name=name,
             file=rel_path,
         )
+        if self._include_body:
+            body_text = _node_text(node, source)
+            body_text, truncated = self._truncate_body(body_text)
+            graph.nodes[-1].properties["body"] = body_text
+            graph.nodes[-1].properties["body_lines"] = body_text.count("\n") + 1
+            if truncated:
+                graph.nodes[-1].properties["body_truncated"] = True
         graph.add_edge(file_id, iface_id, EdgeType.CONTAINS)
         return iface_id
 

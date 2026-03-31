@@ -156,3 +156,101 @@ class TestClassShell:
         for node in graph.nodes:
             if node.label == NodeLabel.CLASS:
                 assert "body" not in node.properties
+
+
+# ── Struct/Interface/Enum Body Tests ──────────────────────────────────────────
+
+
+@pytest.fixture
+def tmp_rust_with_types(tmp_path):
+    """Rust file with struct, trait, and enum."""
+    src = tmp_path / "types.rs"
+    src.write_text(textwrap.dedent("""\
+        pub struct Point {
+            pub x: f64,
+            pub y: f64,
+        }
+
+        pub trait Drawable {
+            fn draw(&self);
+            fn area(&self) -> f64;
+        }
+
+        pub enum Shape {
+            Circle(f64),
+            Rectangle(f64, f64),
+        }
+    """))
+    return tmp_path
+
+
+class TestStructInterfaceEnumBody:
+    """Test body extraction for Struct, Interface, Enum nodes."""
+
+    def test_rust_struct_body(self, tmp_rust_with_types):
+        ext = TreeSitterExtractor(languages=["rust"], include_body=True)
+        graph = ext.extract(tmp_rust_with_types)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.STRUCT and node.properties.get("name") == "Point":
+                body = node.properties.get("body", "")
+                assert "pub struct Point" in body
+                assert "pub x: f64" in body
+                assert "pub y: f64" in body
+                return
+        pytest.fail("Struct 'Point' not found")
+
+    def test_rust_trait_body(self, tmp_rust_with_types):
+        ext = TreeSitterExtractor(languages=["rust"], include_body=True)
+        graph = ext.extract(tmp_rust_with_types)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.INTERFACE and node.properties.get("name") == "Drawable":
+                body = node.properties.get("body", "")
+                assert "trait Drawable" in body
+                assert "fn draw" in body
+                assert "fn area" in body
+                return
+        pytest.fail("Interface 'Drawable' not found")
+
+    def test_rust_enum_body(self, tmp_rust_with_types):
+        ext = TreeSitterExtractor(languages=["rust"], include_body=True)
+        graph = ext.extract(tmp_rust_with_types)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.ENUM and node.properties.get("name") == "Shape":
+                body = node.properties.get("body", "")
+                assert "enum Shape" in body
+                assert "Circle" in body
+                assert "Rectangle" in body
+                return
+        pytest.fail("Enum 'Shape' not found")
+
+
+# ── Truncation Tests ──────────────────────────────────────────────────────────
+
+
+class TestBodyTruncation:
+    """Test body truncation when exceeding max_body_size."""
+
+    def test_truncation_with_small_limit(self, tmp_c_with_functions):
+        ext = TreeSitterExtractor(languages=["c"], include_body=True, max_body_size=30)
+        graph = ext.extract(tmp_c_with_functions)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.FUNCTION and node.properties.get("name") == "add":
+                body = node.properties.get("body", "")
+                assert node.properties.get("body_truncated") is True
+                assert "truncated:" in body
+                return
+        pytest.fail("Function 'add' not found")
+
+    def test_no_truncation_within_limit(self, tmp_c_with_functions):
+        ext = TreeSitterExtractor(languages=["c"], include_body=True, max_body_size=51_200)
+        graph = ext.extract(tmp_c_with_functions)
+
+        for node in graph.nodes:
+            if node.label == NodeLabel.FUNCTION and node.properties.get("name") == "add":
+                assert node.properties.get("body_truncated") is None
+                return
+        pytest.fail("Function 'add' not found")
