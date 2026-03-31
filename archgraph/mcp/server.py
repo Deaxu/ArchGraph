@@ -123,6 +123,20 @@ TOOLS = [
             "properties": {},
         },
     },
+    {
+        "name": "source",
+        "description": "Get source code of a function, class, struct, or other symbol",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "symbol_id": {
+                    "type": "string",
+                    "description": "Symbol node ID (e.g. 'func:src/auth.c:validate:42')",
+                },
+            },
+            "required": ["symbol_id"],
+        },
+    },
 ]
 
 # MCP Resources
@@ -242,6 +256,14 @@ class ArchGraphMCP:
             elif name == "stats":
                 result = self._get_stats()
 
+            elif name == "source":
+                symbol_id = arguments["symbol_id"]
+                source_result = self._store.get_source(symbol_id)
+                if source_result:
+                    result = source_result
+                else:
+                    result = {"error": f"Symbol not found or has no body: {symbol_id}"}
+
             else:
                 result = {"error": f"Unknown tool: {name}"}
 
@@ -295,6 +317,7 @@ class ArchGraphMCP:
             return {"error": f"Symbol not found: {symbol_id}"}
 
         props = symbol[0].get("props", {})
+        props.pop("body", None)  # body is served via the source tool
 
         # Get callers (upstream)
         callers = self._store.query(

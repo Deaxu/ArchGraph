@@ -254,3 +254,92 @@ class TestBodyTruncation:
                 assert node.properties.get("body_truncated") is None
                 return
         pytest.fail("Function 'add' not found")
+
+
+# ── Neo4jStore.get_source() Tests ─────────────────────────────────────────────
+
+from unittest.mock import MagicMock
+
+from archgraph.graph.neo4j_store import Neo4jStore
+
+
+class TestNeo4jGetSource:
+    """Test Neo4jStore.get_source() with mocked driver."""
+
+    def _make_store(self) -> Neo4jStore:
+        store = Neo4jStore(uri="bolt://mock:7687")
+        store._driver = MagicMock()
+        return store
+
+    def test_get_source_found(self):
+        store = self._make_store()
+        mock_session = MagicMock()
+        mock_record = MagicMock()
+        mock_record.data.return_value = {
+            "id": "func:main.c:add:1",
+            "name": "add",
+            "file": "main.c",
+            "body": "int add(int a, int b) { return a + b; }",
+            "body_lines": 1,
+            "body_truncated": None,
+            "line_start": 1,
+            "line_end": 3,
+        }
+        mock_result = MagicMock()
+        mock_result.__iter__ = MagicMock(return_value=iter([mock_record]))
+        mock_session.run.return_value = mock_result
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        store._driver.session.return_value = mock_session
+
+        result = store.get_source("func:main.c:add:1")
+        assert result is not None
+        assert result["body"] == "int add(int a, int b) { return a + b; }"
+
+    def test_get_source_not_found(self):
+        store = self._make_store()
+        mock_session = MagicMock()
+        mock_result = MagicMock()
+        mock_result.__iter__ = MagicMock(return_value=iter([]))
+        mock_session.run.return_value = mock_result
+        mock_session.__enter__ = MagicMock(return_value=mock_session)
+        mock_session.__exit__ = MagicMock(return_value=False)
+        store._driver.session.return_value = mock_session
+
+        result = store.get_source("func:nonexistent:0")
+        assert result is None
+
+
+# ── MCP Source Tool Tests ─────────────────────────────────────────────────────
+
+
+class TestMCPSourceTool:
+    """Test MCP source tool definition."""
+
+    def test_source_tool_in_tools_list(self):
+        from archgraph.mcp.server import TOOLS
+        tool_names = [t["name"] for t in TOOLS]
+        assert "source" in tool_names
+
+    def test_source_tool_schema(self):
+        from archgraph.mcp.server import TOOLS
+        source_tool = next(t for t in TOOLS if t["name"] == "source")
+        assert "symbol_id" in source_tool["inputSchema"]["properties"]
+        assert "symbol_id" in source_tool["inputSchema"]["required"]
+
+
+# ── rlm-agent Tool Tests ─────────────────────────────────────────────────────
+
+
+class TestArchGraphToolSource:
+    """Test rlm-agent tool source method."""
+
+    def test_source_method_exists(self):
+        from archgraph.tool.archgraph_tool import ArchGraphTool
+        tool = ArchGraphTool.__new__(ArchGraphTool)
+        assert hasattr(tool, "source")
+        assert callable(tool.source)
+
+    def test_description_mentions_body(self):
+        from archgraph.tool.archgraph_tool import _DESCRIPTION
+        assert "body" in _DESCRIPTION

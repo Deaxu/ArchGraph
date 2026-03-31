@@ -33,11 +33,12 @@ Source code knowledge graph stored in Neo4j. Query with Cypher.
 ## Node Labels & Key Properties
 
 - **File**: path, language, loc, churn_count, last_modified
-- **Function**: name, file, line_start, is_exported, is_input_source, is_dangerous_sink, \
-is_allocator, is_crypto, is_parser, is_unsafe, has_unsafe_block, has_transmute, \
-has_force_unwrap, has_goroutine, has_channel_op, has_defer
-- **Class**: name, file, line_start
-- **Struct**: name, file, line_start
+- **Function**: name, file, line_start, line_end, body, body_lines, body_truncated, \
+is_exported, is_input_source, is_dangerous_sink, is_allocator, is_crypto, is_parser, \
+is_unsafe, has_unsafe_block, has_transmute, has_force_unwrap, has_goroutine, \
+has_channel_op, has_defer
+- **Class**: name, file, line_start, line_end, body (shell — method bodies replaced with ...)
+- **Struct**: name, file, line_start, body
 - **Interface**: name, file, line_start (traits, protocols)
 - **Enum**: name, file, line_start
 - **Module**: name, path (namespace, package, use/import target)
@@ -161,6 +162,25 @@ class ArchGraphTool(BaseTool):
         self._ensure_connected()
         return self._store.query(cypher, params)
 
+
+    @tool_method(
+        description="Get source code of a symbol by its node ID",
+        returns="dict with body, name, file, line range — or error",
+    )
+    def source(self, symbol_id: str) -> dict[str, Any]:
+        """Get source code of a function, class, struct, or other symbol.
+
+        Args:
+            symbol_id: Node ID (e.g. "func:src/auth.c:validate:42").
+
+        Returns:
+            Dict with body, name, file, line_start, line_end, body_lines.
+        """
+        self._ensure_connected()
+        result = self._store.get_source(symbol_id)
+        if result is None:
+            return {"error": f"Symbol not found or has no body: {symbol_id}"}
+        return result
 
     def find_vulnerabilities(
         self, severity: str | None = None

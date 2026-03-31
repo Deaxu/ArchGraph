@@ -375,6 +375,23 @@ class Neo4jStore:
             result = session.run(cypher, parameters=params or {})
             return [record.data() for record in result]
 
+    def get_source(self, symbol_id: str) -> dict[str, Any] | None:
+        """Get source code for a symbol by its node ID.
+
+        Returns dict with body, name, file, line_start, line_end, body_lines,
+        body_truncated — or None if the symbol is not found or has no body.
+        """
+        results = self.query(
+            "MATCH (n:_Node {_id: $id}) "
+            "WHERE n.body IS NOT NULL "
+            "RETURN n._id AS id, n.name AS name, n.file AS file, "
+            "n.body AS body, n.body_lines AS body_lines, "
+            "n.body_truncated AS body_truncated, "
+            "n.line_start AS line_start, n.line_end AS line_end",
+            {"id": symbol_id},
+        )
+        return results[0] if results else None
+
     def schema_info(self) -> dict[str, Any]:
         """Return the graph schema — node labels, relationship types, and property keys."""
         with self._session() as session:
