@@ -115,6 +115,8 @@ def main() -> None:
 @click.option("--include-cve/--no-cve", default=False, help="Enable CVE enrichment via OSV API")
 @click.option("--include-clustering/--no-clustering", default=False, help="Enable cluster detection")
 @click.option("--include-process/--no-process", default=False, help="Enable process tracing")
+@click.option("--include-body/--no-body", default=True, help="Store source code bodies in graph nodes")
+@click.option("--max-body-size", type=int, default=51_200, help="Max body size in bytes (truncate beyond)")
 @click.option("--incremental/--no-incremental", default=False,
               help="Incremental extraction — only re-extract changed files")
 @click.option("--clear-db/--no-clear-db", default=False, help="Clear database before import")
@@ -139,6 +141,8 @@ def extract(
     incremental: bool,
     include_clustering: bool,
     include_process: bool,
+    include_body: bool,
+    max_body_size: int,
     clear_db: bool,
     verbose: bool,
 ) -> None:
@@ -178,6 +182,8 @@ def extract(
         incremental=incremental,
         include_clustering=include_clustering,
         include_process=include_process,
+        include_body=include_body,
+        max_body_size=max_body_size,
     )
 
         console.print(
