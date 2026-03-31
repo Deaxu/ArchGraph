@@ -851,6 +851,11 @@ class TreeSitterExtractor(BaseExtractor):
         if node.type in call_types:
             callee_name, qualifier = self._get_callee_name(node, source)
             if callee_name:
+                # Skip overly long names (IIFE, chain expressions, etc.)
+                if len(callee_name) > 200:
+                    callee_name = callee_name[:200]
+                if qualifier and len(qualifier) > 200:
+                    qualifier = qualifier[:200]
                 # Build funcref ID with qualifier if present
                 if qualifier:
                     callee_id = f"funcref:{qualifier}.{callee_name}"
