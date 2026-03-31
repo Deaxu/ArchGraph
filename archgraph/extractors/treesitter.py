@@ -171,7 +171,16 @@ class TreeSitterExtractor(BaseExtractor):
             try:
                 mod = importlib.import_module(module_name)
                 # tree-sitter 0.24+ API: language() returns a Language capsule
-                ts_lang = ts.Language(mod.language())
+                # TypeScript module exposes language_typescript()/language_tsx()
+                if hasattr(mod, "language"):
+                    lang_func = mod.language
+                elif hasattr(mod, f"language_{lang}"):
+                    lang_func = getattr(mod, f"language_{lang}")
+                elif hasattr(mod, "language_typescript") and lang == "typescript":
+                    lang_func = mod.language_typescript
+                else:
+                    raise AttributeError(f"No language function found in {module_name}")
+                ts_lang = ts.Language(lang_func())
                 parser = ts.Parser(ts_lang)
                 self._parsers[lang] = parser
                 self._ts_languages[lang] = ts_lang
