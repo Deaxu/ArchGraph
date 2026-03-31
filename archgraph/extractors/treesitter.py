@@ -850,15 +850,25 @@ class TreeSitterExtractor(BaseExtractor):
     ) -> None:
         """Recursively find call expressions."""
         if node.type in call_types:
-            callee_name = self._get_callee_name(node, source)
+            callee_name, qualifier = self._get_callee_name(node, source)
             if callee_name:
-                # Create an unresolved function reference
-                callee_id = f"funcref:{callee_name}"
+                # Build funcref ID with qualifier if present
+                if qualifier:
+                    callee_id = f"funcref:{qualifier}.{callee_name}"
+                else:
+                    callee_id = f"funcref:{callee_name}"
                 graph.add_node(callee_id, NodeLabel.FUNCTION, name=callee_name)
-                graph.add_edge(caller_id, callee_id, EdgeType.CALLS)
+                if qualifier:
+                    graph.add_edge(
+                        caller_id, callee_id, EdgeType.CALLS, qualifier=qualifier,
+                    )
+                else:
+                    graph.add_edge(caller_id, callee_id, EdgeType.CALLS)
 
         for child in node.children:
-            self._find_calls_recursive(child, source, call_types, caller_id, rel_path, graph)
+            self._find_calls_recursive(
+                child, source, call_types, caller_id, rel_path, graph,
+            )
 
     def _extract_inheritance(
         self,
@@ -968,29 +978,46 @@ class TreeSitterExtractor(BaseExtractor):
             return _node_text(type_node, source)
         return ""
 
-    def _get_callee_name(self, node: ts.Node, source: bytes) -> str:
-        """Extract the function being called from a call expression."""
+    _SKIP_QUALIFIERS = frozenset({"self", "this", "super", "Self"})
+
+    def _get_callee_name(self, node: ts.Node, source: bytes) -> tuple[str, str | None]:
+        """Extract the function being called and its qualifier.
+
+        Returns (name, qualifier). qualifier is None when there is no receiver
+        or when the receiver is self/this/super.
+        """
         func_node = _find_child_by_field(node, "function")
         if func_node:
             text = _node_text(func_node, source)
-            # Strip out complex expressions — take last identifier-like segment
-            # e.g., "obj->method" -> "method", "ns::func" -> "func"
-            for sep in ("->", "::", ".", "/"):
+            # Check for qualified call: obj.method, obj->method, ns::func
+            for sep in ("->", "::", "."):
                 if sep in text:
-                    text = text.rsplit(sep, 1)[-1]
-            return text.strip()
+                    parts = text.rsplit(sep, 1)
+                    qualifier = parts[0].strip()
+                    name = parts[1].strip()
+                    if qualifier in self._SKIP_QUALIFIERS:
+                        return name, None
+                    return name, qualifier
+            return text.strip(), None
 
-        # method_invocation (Java) — name field
+        # method_invocation (Java) — name field + optional object
         name_node = _find_child_by_field(node, "name")
         if name_node:
-            return _node_text(name_node, source)
+            name = _node_text(name_node, source)
+            obj_node = _find_child_by_field(node, "object")
+            if obj_node:
+                qualifier = _node_text(obj_node, source)
+                if qualifier in self._SKIP_QUALIFIERS:
+                    return name, None
+                return name, qualifier
+            return name, None
 
         # message_expression (ObjC)
         selector = _find_child_by_field(node, "selector")
         if selector:
-            return _node_text(selector, source)
+            return _node_text(selector, source), None
 
-        return ""
+        return "", None
 
     def _parse_import_target(self, text: str) -> str:
         """Parse import/include text to extract the module name."""
