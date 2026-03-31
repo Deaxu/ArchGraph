@@ -704,13 +704,12 @@ class TreeSitterExtractor(BaseExtractor):
     ) -> None:
         """Extract an import/include edge."""
         text = _node_text(node, source).strip()
-        # Store as a property on the IMPORTS edge — we resolve targets later
         import_target = self._parse_import_target(text)
         if import_target:
             target_id = f"module:{import_target}"
-            # Create a module node (may be deduped later)
             graph.add_node(target_id, NodeLabel.MODULE, name=import_target)
-            graph.add_edge(file_id, target_id, EdgeType.IMPORTS, raw=text)
+            names = self._parse_named_imports(text)
+            graph.add_edge(file_id, target_id, EdgeType.IMPORTS, raw=text, names=names)
 
     def _extract_impl(
         self,
@@ -1043,6 +1042,74 @@ class TreeSitterExtractor(BaseExtractor):
         if text.startswith("import "):
             return text[7:].strip("'\"(); ")
         return text[:200]
+
+    def _parse_named_imports(self, text: str) -> str:
+        """Parse import statement text to extract comma-separated imported names.
+
+        Returns a comma-separated string of imported names, or '' if none/wildcard.
+        """
+        text = text.strip()
+
+        # C/C++: #include — no named imports
+        if text.startswith("#include"):
+            return ""
+
+        # JS/TS: import { foo, bar } from "module"
+        if "from" in text and "import" in text:
+            if "* as" in text:
+                return ""
+            if "{" in text and "}" in text:
+                brace_content = text[text.index("{") + 1 : text.index("}")]
+                names = []
+                for part in brace_content.split(","):
+                    part = part.strip()
+                    if not part:
+                        continue
+                    if " as " in part:
+                        part = part.split(" as ")[-1].strip()
+                    names.append(part)
+                return ",".join(names)
+            # Default import: import Foo from "module"
+            if text.startswith("import "):
+                after_import = text[7:].strip()
+                default_name = after_import.split("from")[0].strip().rstrip(",").strip()
+                if default_name and not default_name.startswith("{"):
+                    return default_name
+            return ""
+
+        # Rust: use crate::utils::foo; or use crate::utils::{foo, bar};
+        if text.startswith("use "):
+            target = text[4:].rstrip(";").strip()
+            if "{" in target and "}" in target:
+                brace_content = target[target.index("{") + 1 : target.index("}")]
+                names = [n.strip() for n in brace_content.split(",") if n.strip()]
+                return ",".join(names)
+            if "::" in target:
+                return target.rsplit("::", 1)[-1]
+            return target
+
+        # Go: import "fmt" or import alias "pkg/path" (has quotes, no dots)
+        if text.startswith("import") and ('"' in text or "'" in text) and "from" not in text:
+            rest = text[6:].strip().strip("()")
+            rest = rest.strip()
+            parts = rest.split(None, 1)
+            if len(parts) == 2 and (parts[1].startswith('"') or parts[1].startswith("'")):
+                return parts[0].strip("'\"")
+            clean = rest.strip("'\"")
+            if "/" in clean:
+                return clean.rsplit("/", 1)[-1]
+            return clean
+
+        # Java/Kotlin: import com.example.Foo;
+        if text.startswith("import "):
+            target = text[7:].rstrip(";").strip()
+            if target.startswith("static "):
+                target = target[7:]
+            if "." in target:
+                return target.rsplit(".", 1)[-1]
+            return target
+
+        return ""
 
     def _is_exported(self, text: str, lang: str) -> bool:
         """Check if a function/symbol is exported."""
