@@ -92,21 +92,21 @@ archgraph serve --port 8080                            # Opens at localhost:8080
 
 ## Supported Languages
 
-| Language | SCIP Indexer | Call Resolution | You Need |
-|----------|-------------|-----------------|----------|
-| TypeScript | scip-typescript (auto) | ~82% compiler-backed | Node.js |
-| JavaScript | scip-typescript (auto) | ~82% compiler-backed | Node.js |
-| Python | scip-python (auto) | ~82% compiler-backed | Node.js |
-| Rust | rust-analyzer (auto) | ~82% compiler-backed | Rust toolchain |
-| Go | scip-go (auto) | ~82% compiler-backed | Go toolchain |
-| Java | scip-java (auto) | ~82% compiler-backed | JDK |
-| Kotlin | scip-java (auto) | ~82% compiler-backed | JDK + `pip install archgraph[kotlin]` |
-| C | heuristic + libclang | ~43% heuristic | `pip install archgraph[clang]` for deep analysis |
-| C++ | heuristic + libclang | ~43% heuristic | `pip install archgraph[clang]` for deep analysis |
-| Swift | tree-sitter only | heuristic | `pip install archgraph[swift]` |
-| Objective-C | tree-sitter only | heuristic | `pip install archgraph[objc]` |
+| Language | Call Resolution | Auto-Install | You Need |
+|----------|----------------|-------------|----------|
+| TypeScript | SCIP (compiler-backed) | scip-typescript | Node.js |
+| JavaScript | SCIP (compiler-backed) | scip-typescript | Node.js |
+| Python | SCIP (compiler-backed) | scip-python | Node.js |
+| Rust | SCIP (compiler-backed) | rust-analyzer | Rust toolchain |
+| Go | SCIP (compiler-backed) | scip-go | Go toolchain |
+| Java | SCIP (compiler-backed) | scip-java | JDK |
+| Kotlin | SCIP (compiler-backed) | scip-java | JDK + `pip install archgraph[kotlin]` |
+| C | Heuristic (name-based) | -- | `pip install archgraph[clang]` for deep analysis |
+| C++ | Heuristic (name-based) | -- | `pip install archgraph[clang]` for deep analysis |
+| Swift | Heuristic (name-based) | -- | `pip install archgraph[swift]` |
+| Objective-C | Heuristic (name-based) | -- | `pip install archgraph[objc]` |
 
-SCIP indexers are **downloaded automatically** on first use. You just need the language toolchain installed.
+**SCIP vs Heuristic:** SCIP runs the language's own compiler to resolve calls with full type information -- it knows *exactly* which function is being called. Heuristic matches by name and can pick the wrong target in projects with common names like `process()`, `get()`, or `toString()`. SCIP indexers are downloaded automatically on first use; you just need the language toolchain installed.
 
 **Install everything at once:**
 ```bash

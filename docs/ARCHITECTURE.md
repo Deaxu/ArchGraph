@@ -72,14 +72,14 @@ Step 11:               Process tracing (execution flows from entry points)
 
 After all structural extraction is merged, call resolution runs in two stages:
 
-**Stage 1 — SCIP (compiler-backed):** For languages with SCIP indexers (currently
-TypeScript/JavaScript), the indexer is auto-installed and run. SCIP uses the
-language's own compiler/type-checker to produce cross-reference data, achieving
-~82% resolution accuracy. Old `funcref:` nodes for SCIP-covered languages are
+**Stage 1 — SCIP (compiler-backed):** For languages with SCIP indexers (TypeScript,
+JavaScript, Python, Rust, Go, Java, Kotlin), the indexer is auto-installed and run.
+SCIP uses the language's own compiler/type-checker to produce cross-reference data
+with full type information. Old `funcref:` nodes for SCIP-covered languages are
 removed and replaced with compiler-verified CALLS edges (`source: "scip"`).
 
-**Stage 2 — Heuristic fallback:** For languages without SCIP support (C, C++, Rust,
-Java, Go, etc.), the `CallResolver` runs its 4-level fallback chain:
+**Stage 2 — Heuristic fallback:** For languages without SCIP support (C, C++, Swift,
+Objective-C) or when SCIP fails, the `CallResolver` runs its 4-level fallback chain:
 qualifier match, intra-file, import-based, global unique (~43% accuracy).
 
 SCIP indexers are installed automatically via the language's package manager.

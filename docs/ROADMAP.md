@@ -59,7 +59,7 @@
   - [x] Java/Kotlin via `scip-java` (coursier-based)
   - [x] Python via `@sourcegraph/scip-python` (auto-install + Windows auto-patch)
   - [x] Heuristic fallback for C/C++ and unsupported languages
-  - [x] 82% resolution rate (vs 43% heuristic) on real-world projects
+  - [x] Compiler-backed resolution with full type information
 - [x] **Qualifier Preservation** — `Counter.increment()` → qualifier + name tracked
 - [x] **Named Import Parsing** — JS/TS/Rust/Java/Go import symbol extraction
 

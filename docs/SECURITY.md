@@ -6,7 +6,7 @@ ArchGraph provides automated security labeling, taint tracking, CVE enrichment, 
 
 Security analysis works across all 11 supported languages: C, C++, Rust, Java, Kotlin, Go, TypeScript, JavaScript, Python, Swift, Objective-C.
 
-SCIP-backed call resolution (TS/JS, Python, Rust, Go, Java/Kotlin) provides ~82% accuracy for tracking call chains between security-critical functions. C/C++ uses heuristic resolution with libclang deep analysis for taint tracking.
+SCIP-backed call resolution (TS/JS, Python, Rust, Go, Java/Kotlin) uses compiler-level type information for accurate call chain tracking between security-critical functions. C/C++ uses heuristic resolution with libclang deep analysis for taint tracking.
 
 ## Automatic Security Labels
 

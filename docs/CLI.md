@@ -379,7 +379,8 @@ All Neo4j options can be set via environment variables:
 | Objective-C | `.m`, `.mm` | — | — (optional) |
 
 SCIP indexers are installed automatically on first extraction. They use each language's
-own compiler/type-checker for ~82% call resolution accuracy vs ~43% heuristic.
+own compiler/type-checker for accurate call resolution. Heuristic fallback resolves calls
+by name matching when SCIP is unavailable.
 
 ### Prerequisites per Language
 
