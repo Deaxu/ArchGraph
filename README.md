@@ -6,215 +6,332 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Built%20for%20Agents-green.svg" alt="Built for AI Agents via MCP"/></a>
-  <img src="https://img.shields.io/badge/tests-159%20collected%20·%20137%20passed-brightgreen.svg" alt="Tests"/>
+  <img src="https://img.shields.io/badge/tests-212%20passed-brightgreen.svg" alt="Tests"/>
 </p>
 
 <p align="center">
-  <b>Purpose-built code intelligence for AI coding agents.</b><br/>
-  Parses <b>10 languages</b>, builds a knowledge graph with <b>taint analysis</b>, <b>CVE detection</b>, and <b>clustering</b>.<br/>
-  Expose to any agent via <b>MCP</b> — Cursor, Claude Code, Windsurf, and more.
+  <b>Code intelligence for AI agents and security auditing.</b><br/>
+  Parses <b>11 languages</b>, builds a knowledge graph with <b>compiler-backed call resolution</b>,<br/>
+  <b>taint analysis</b>, <b>CVE detection</b>, and <b>clustering</b>. Expose to any agent via <b>MCP</b>.
 </p>
 
 ---
 
-## Why ArchGraph?
+## What Does It Do?
 
-When an AI agent reads your codebase, it sees **text**. ArchGraph gives it a **structured knowledge graph** — taint paths, call graphs, data flows, and vulnerability metadata that plain code search can never provide.
+ArchGraph turns your source code into a **queryable knowledge graph** stored in Neo4j. It understands call relationships, data flows, security patterns, and git history -- then exposes all of this to AI agents via MCP.
 
-| | **ArchGraph** | **Code Search** | **AST Parsers** | **SAST Tools** |
-|--|---------------|-----------------|-----------------|----------------|
-| **Taint Analysis** | ✅ Input → Sink | ❌ | ❌ | ✅ |
-| **CVE Detection** | ✅ Auto via OSV | ❌ | ❌ | Partial |
-| **CFG / Data Flow** | ✅ libclang + tree-sitter | ❌ | Partial | ✅ |
-| **MCP for AI Agents** | ✅ 7 tools | ❌ | ❌ | ❌ |
-| **Functional Clustering** | ✅ Community detection | ❌ | ❌ | ❌ |
-| **Execution Tracing** | ✅ Entry → Sink flows | ❌ | ❌ | ❌ |
-| **Export (JSON/GraphML)** | ✅ | ❌ | ❌ | Partial |
-| **Local-first** | ✅ Neo4j | Varies | ✅ | Varies |
+```
+Your Code  -->  ArchGraph  -->  Neo4j Graph  -->  AI Agent (via MCP)
+                                                   Python API
+                                                   Web Dashboard
+                                                   CLI Queries
+```
+
+**Without ArchGraph**, your AI agent sees text files and guesses.
+**With ArchGraph**, your agent sees call chains, taint paths, blast radius, and CVEs.
 
 ---
 
 ## Quick Start
 
+### 1. Install
+
 ```bash
-# Install
 pip install archgraph
+```
 
-# Start Neo4j (required)
-docker compose up -d neo4j           # password: archgraph
+### 2. Start Neo4j
 
-# Extract (auto-detects languages)
-archgraph extract /path/to/repo -w 4
+```bash
+docker compose up -d neo4j
+```
 
-# Query the graph
-archgraph query "MATCH (f:Function {is_input_source: true}) RETURN f.name, f.file"
+Or use an existing Neo4j 5+ instance. Default credentials: `neo4j` / `archgraph`.
 
-# Start web dashboard
-archgraph serve --port 8080
+### 3. Extract Your Repo
 
-# Generate HTML security report
-archgraph report /path/to/repo
+```bash
+archgraph extract /path/to/your/repo
+```
+
+That's it. ArchGraph auto-detects languages, runs SCIP indexers for accurate call resolution, extracts git history, scans dependencies, and imports everything into Neo4j.
+
+### 4. Use It
+
+**With an AI agent (recommended):**
+```bash
+archgraph mcp                                          # Start MCP server
+claude mcp add archgraph -- archgraph mcp              # Connect Claude Code
+```
+
+**From the command line:**
+```bash
+archgraph search -n "auth*" -t function                # Find functions
+archgraph impact "func:src/auth.py:validate:42"        # Blast radius
+archgraph query "MATCH (f:Function) RETURN f.name"     # Raw Cypher
+```
+
+**From Python:**
+```python
+from archgraph import ArchGraph
+
+ag = ArchGraph()
+ag.search(name="validate*", type="function")
+ag.impact("func:src/auth.py:validate:42", direction="both")
+ag.context("func:src/api.py:handle_request:10")
+ag.close()
+```
+
+**Web dashboard:**
+```bash
+archgraph serve --port 8080                            # Opens at localhost:8080
 ```
 
 ---
 
-## 🤖 AI Agent Integration (MCP)
+## Supported Languages
 
-This is the primary way ArchGraph is designed to be used. It exposes 7 tools and 4 resources to any MCP-compatible agent.
+| Language | SCIP Indexer | Call Resolution | You Need |
+|----------|-------------|-----------------|----------|
+| TypeScript | scip-typescript (auto) | ~82% compiler-backed | Node.js |
+| JavaScript | scip-typescript (auto) | ~82% compiler-backed | Node.js |
+| Python | scip-python (auto) | ~82% compiler-backed | Node.js |
+| Rust | rust-analyzer (auto) | ~82% compiler-backed | Rust toolchain |
+| Go | scip-go (auto) | ~82% compiler-backed | Go toolchain |
+| Java | scip-java (auto) | ~82% compiler-backed | JDK |
+| Kotlin | scip-java (auto) | ~82% compiler-backed | JDK + `pip install archgraph[kotlin]` |
+| C | heuristic + libclang | ~43% heuristic | `pip install archgraph[clang]` for deep analysis |
+| C++ | heuristic + libclang | ~43% heuristic | `pip install archgraph[clang]` for deep analysis |
+| Swift | tree-sitter only | heuristic | `pip install archgraph[swift]` |
+| Objective-C | tree-sitter only | heuristic | `pip install archgraph[objc]` |
 
-### Setup
+SCIP indexers are **downloaded automatically** on first use. You just need the language toolchain installed.
 
+**Install everything at once:**
 ```bash
-# Start Neo4j (if not already running)
-docker compose up -d neo4j
-
-# Index your repo
-archgraph extract . --include-cve --include-clustering
-
-# Start MCP server
-archgraph mcp
+pip install archgraph[all]
 ```
 
-**Connect your agent:**
+---
 
-| Agent | Command |
-|-------|---------|
-| Claude Code | `claude mcp add archgraph -- archgraph mcp` |
-| Cursor | Add to `~/.cursor/mcp.json` |
-| Windsurf | Add to MCP config |
-| OpenCode | Add to `~/.config/opencode/config.json` |
+## AI Agent Integration (MCP)
 
-### What Your Agent Gets
+ArchGraph is designed to be used through AI agents. It provides **12 tools** and **4 resources** via MCP.
 
-**Tools:** `query`, `impact`, `context`, `detect_changes`, `find_vulnerabilities`, `cypher`, `stats`
+### Connect Your Agent
 
-**Resources:** `archgraph://schema`, `archgraph://security`, `archgraph://clusters`, `archgraph://processes`
+| Agent | Setup |
+|-------|-------|
+| **Claude Code** | `claude mcp add archgraph -- archgraph mcp` |
+| **Cursor** | Add to `~/.cursor/mcp.json` |
+| **Windsurf** | Add to MCP settings |
+| **Any MCP client** | `archgraph mcp` (stdio transport) |
+
+### Available Tools
+
+| Tool | What It Does |
+|------|-------------|
+| `query` / `cypher` | Run Cypher queries against the graph |
+| `search` | Find symbols by name, type, or file pattern |
+| `search_calls` | Find call chains between functions (with source filtering) |
+| `context` | 360-degree view of a symbol -- callers, callees, cluster, security labels |
+| `impact` | Blast radius analysis -- what depends on this function? |
+| `detect_changes` | Which clusters, processes, and security paths are affected by file changes? |
+| `find_vulnerabilities` | Find CVEs in dependencies |
+| `source` | Get the source code of any function or class |
+| `extract` | Index a new repository (supports git URLs) |
+| `stats` | Graph statistics -- node/edge counts |
+| `repos` | List all indexed repositories |
+
+### Call Resolution Confidence
+
+Every CALLS edge has a `source` property so your agent knows how reliable it is:
+
+| Source | Confidence | How |
+|--------|-----------|-----|
+| `scip` | High | Compiler-backed cross-references |
+| `heuristic` | Lower | Name-based matching (4-level fallback) |
+
+Use `search_calls(source="scip")` to only get compiler-verified call chains, or check `resolution_confidence` in impact analysis results.
 
 ### Example Conversation
 
 ```
-You: "Are there any buffer overflow risks in the network code?"
+You: "What's the security impact of changing the parse_request function?"
 
-Agent:
-1. Queries input sources in network files
-2. Traces taint paths to dangerous sinks
-3. Reports: "Found 2 paths:
-   - net_recv() → memcpy() in src/net/handler.c (depth: 3)
-   - read_packet() → strcpy() in src/net/parser.c (depth: 4)
-   Both reach dangerous sinks without validation."
+Agent uses impact() -> sees 12 downstream functions, 3 reach dangerous sinks
+Agent uses context() -> sees parse_request is an input source
+Agent uses search_calls(source="scip") -> traces verified call chain
+
+Agent: "parse_request() is an input source that reaches dangerous sinks
+        through 3 hops (all SCIP-verified). Changing it could affect
+        12 functions across 4 files. Resolution confidence: high.
+        Risk level: HIGH."
 ```
 
 ---
 
-## 🔒 Security Features
+## Security Features
 
-**Automatic labeling** — Every function gets security labels:
-- `is_input_source` — reads external data (recv, read, fetch, ...)
-- `is_dangerous_sink` — dangerous operations (memcpy, exec, eval, ...)
-- `is_allocator`, `is_crypto`, `is_parser` — additional categories
-- `risk_score` — 0-100 risk score based on labels
+### Automatic Labels
 
-**Taint path detection:**
-```cypher
-MATCH path = (src:Function {is_input_source: true})-[:CALLS*1..8]->(sink:Function {is_dangerous_sink: true})
-RETURN src.name, sink.name, length(path) AS depth
-```
+Every function is automatically tagged:
 
-**CVE enrichment:**
+| Label | Meaning | Examples |
+|-------|---------|---------|
+| `is_input_source` | Reads external data | recv, read, fetch, getParameter, stdin |
+| `is_dangerous_sink` | Unsafe operations | memcpy, exec, eval, innerHTML, system |
+| `is_allocator` | Memory management | malloc, free, new, Box::new, make |
+| `is_crypto` | Cryptographic ops | encrypt, SHA256, HMAC, AES |
+| `is_parser` | Parsing / deserialization | JSON.parse, unmarshal, deserialize |
+
+### Taint Tracking
+
+With deep analysis enabled, ArchGraph traces data from input sources to dangerous sinks:
+
 ```bash
-archgraph extract . --include-cve    # Queries OSV API automatically
+archgraph extract /path/to/repo --include-clang     # C/C++ taint via libclang
+archgraph extract /path/to/repo --include-deep       # Rust/Java/Go taint via tree-sitter
 ```
+
+### CVE Detection
+
+```bash
+archgraph extract /path/to/repo --include-cve
+```
+
+Automatically queries the [OSV database](https://osv.dev) for known vulnerabilities in your dependencies. Supports npm, PyPI, crates.io, Go, Maven, CocoaPods, and more.
+
+### Security Report
+
+```bash
+archgraph report /path/to/repo -o report.html
+```
+
+Generates a single-file HTML report with risk scores, taint paths, CVEs, and more.
 
 ---
 
-## All Commands
+## All CLI Commands
 
 | Command | Description |
 |---------|-------------|
-| `extract` | Extract code graph from repository |
-| `query` | Run Cypher queries against the graph |
-| `stats` | Show node/edge statistics |
-| `schema` | Show graph schema |
-| `diff` | Compare repo state vs stored graph |
-| `impact` | Blast radius analysis for a function |
-| `export` | Export to JSON, GraphML, or CSV |
-| `report` | Generate HTML security report |
-| `serve` | Start web dashboard |
-| `mcp` | Start MCP server for AI agents |
-| `skills` | Generate AI agent skill files |
-| `repos` | List indexed repositories |
+| `archgraph extract <path>` | Extract code graph (local path or git URL) |
+| `archgraph search` | Search symbols by name/type/file |
+| `archgraph query <cypher>` | Run Cypher queries |
+| `archgraph impact <symbol>` | Blast radius analysis |
+| `archgraph stats` | Graph statistics |
+| `archgraph schema` | Show graph schema |
+| `archgraph diff <path>` | Compare repo vs stored graph |
+| `archgraph export <path>` | Export to JSON, GraphML, or CSV |
+| `archgraph report <path>` | Generate HTML security report |
+| `archgraph serve` | Start web dashboard |
+| `archgraph mcp` | Start MCP server |
+| `archgraph skills <path>` | Generate AI agent skill files |
+| `archgraph repos` | List indexed repositories |
+
+See [CLI Reference](docs/CLI.md) for all options.
 
 ---
 
-## Use Cases
+## Python API
 
-### 🤖 For AI Agents
+```python
+from archgraph import ArchGraph
 
-```bash
-# Index the repo, start MCP server
-archgraph extract . --include-cve --include-clustering
-archgraph mcp
-```
+ag = ArchGraph()  # connects to Neo4j with defaults
 
-Your agent can now ask questions like:
-- *"What are the security risks in the auth module?"*
-- *"Show me all tainted paths from user input to database queries"*
-- *"What's the blast radius of changing `parse_config()`?"*
-- *"Which functions handle sensitive data without encryption?"*
+# Extract a repo (works with local paths and git URLs)
+result = ag.extract("https://github.com/user/repo", languages=["python"])
 
-The agent gets structured graph data — not grep results.
+# Search
+ag.search(name="handle_*", type="function", limit=10)
 
-### Security Audit
-```bash
-archgraph extract /target -l c,cpp --include-cve --include-clang
-archgraph query "MATCH path = (src:Function {is_input_source: true})-[:CALLS*1..5]->(sink:Function {is_dangerous_sink: true}) RETURN src.name, sink.name"
-```
+# Call chains (filter by confidence)
+ag.search_calls(caller="parse", target="exec", source="scip")
 
-### Code Review
-```bash
-archgraph diff /path/to/repo
-archgraph impact "func:src/api.c:handle:42" --direction both
-```
+# Impact analysis (includes resolution confidence)
+ag.impact("func:src/api.py:handler:42", direction="both", max_depth=5)
 
-### Reverse Engineering
-```bash
-archgraph extract /binary/project -l c,cpp,rust --include-clang --include-deep
-archgraph query "MATCH (f:Function) WHERE f.is_exported = true RETURN f.name, f.file"
+# 360-degree context (callers/callees with resolution source)
+ag.context("func:src/auth.py:validate:10")
+
+# Security
+ag.find_vulnerabilities(severity="CRITICAL")
+ag.detect_changes(["src/auth.py", "src/api.py"])
+
+# Source code
+ag.source("func:src/main.py:main:1")
+
+# Raw Cypher
+ag.query("MATCH (f:Function {is_input_source: true}) RETURN f.name, f.file")
+
+ag.close()
 ```
 
 ---
 
-## Architecture
+## Extract Options
 
-```
-                  ┌──────────────────────────────────────────────────┐
-                  │         GraphBuilder Pipeline (11 steps)         │
-                  │                                                  │
-  Local Path ─────┤  1. Tree-sitter structural extraction            │
-     or           │  2. Git history                                  │
-  GitHub URL ─────┤  3. Dependency extraction                        │──── Neo4j
-  (auto clone)    │  4. Annotation scanning                          │     Store
-                  │  5. Security labeling                            │       │
-                  │  6. Clang deep analysis (C/C++)                  │       ├── MCP Server
-                  │  7. Tree-sitter deep analysis (Rust/Java/Go/…)   │       ├── Web Dashboard
-                  │  8. Churn enrichment                             │       └── Export/Report
-                  │  9. CVE enrichment (OSV API)                     │
-                  │ 10. Clustering (community detection)             │
-                  │ 11. Process tracing (execution flows)            │
-                  └──────────────────────────────────────────────────┘
+```bash
+# Basic extraction (auto-detect languages)
+archgraph extract /path/to/repo
+
+# From a GitHub URL
+archgraph extract https://github.com/user/repo
+
+# Specify languages and parallelism
+archgraph extract /path/to/repo -l python,typescript -w 4
+
+# Full security analysis
+archgraph extract /path/to/repo --include-cve --include-clang --include-deep
+
+# With clustering and process tracing
+archgraph extract /path/to/repo --include-clustering --include-process
+
+# Incremental extraction (only changed files)
+archgraph extract /path/to/repo --incremental
+
+# Clear database before import
+archgraph extract /path/to/repo --clear-db
 ```
 
 ---
 
 ## Benchmarks
 
-| Project | Language | Files | Nodes | Edges | Time |
-|---------|----------|-------|-------|-------|------|
-| [zlib](https://github.com/madler/zlib) (~50K LOC) | C | 79 | 2,389 | 3,968 | 6.6s |
-| [fastify](https://github.com/fastify/fastify) (~30K LOC) | JavaScript | 487 | 2,810 | 18,472 | 10.5s |
-| Linux `drivers/usb` (~500K LOC) | C | 892 | 62,812 | 122,746 | 12.7s |
+| Project | Language | Files | Nodes | Edges | SCIP CALLS | Time |
+|---------|----------|-------|-------|-------|------------|------|
+| [zod](https://github.com/colinhacks/zod) | TypeScript | 389 | 6,921 | 12,254 | 4,768 | 63s |
+| [schedule](https://github.com/dbader/schedule) | Python | 4 | 660 | 2,174 | 537 | 39s |
+| [memchr](https://github.com/BurntSushi/memchr) | Rust | 64 | 7,776 | 8,490 | 259 | 53s |
+| [xxhash](https://github.com/cespare/xxhash) | Go | 12 | 275 | 617 | 71 | 11s |
+| [gson](https://github.com/google/gson) | Java | 259 | 11,631 | 35,505 | heuristic | 71s |
 
-*Benchmarks: Windows 11, Python 3.13, single-threaded. Parallel mode (`-w 4`) is 2-3x faster.*
+*Windows 11, Python 3.13, 8 workers. Includes git history, dependencies, and SCIP indexing.*
+
+---
+
+## Configuration
+
+### Neo4j Connection
+
+Set via CLI options or environment variables:
+
+```bash
+export ARCHGRAPH_NEO4J_URI=bolt://localhost:7687
+export ARCHGRAPH_NEO4J_USER=neo4j
+export ARCHGRAPH_NEO4J_PASSWORD=archgraph
+export ARCHGRAPH_NEO4J_DATABASE=neo4j
+```
+
+### Docker Compose
+
+```bash
+docker compose up -d       # Starts Neo4j
+docker compose down        # Stops Neo4j
+```
 
 ---
 
@@ -222,22 +339,25 @@ archgraph query "MATCH (f:Function) WHERE f.is_exported = true RETURN f.name, f.
 
 | Document | Description |
 |----------|-------------|
-| [Architecture & Schema](docs/ARCHITECTURE.md) | Graph schema, node/edge types, pipeline |
-| [CLI Reference](docs/CLI.md) | All commands and options |
-| [AI Agent Integration](docs/AGENT.md) | MCP setup, tools, examples |
-| [Security Analysis](docs/SECURITY.md) | Security labeling, Cypher queries |
-| [Deep Analysis](docs/DEEP_ANALYSIS.md) | CFG, data flow, taint tracking |
-| [Roadmap](docs/ROADMAP.md) | Development phases |
+| [CLI Reference](docs/CLI.md) | All commands, options, and examples |
+| [Architecture & Schema](docs/ARCHITECTURE.md) | Graph schema, node/edge types, pipeline details |
+| [AI Agent Integration](docs/AGENT.md) | MCP setup, Python API, rlm-agent tool |
+| [Security Analysis](docs/SECURITY.md) | Security labels, taint tracking, CVE detection |
+| [Deep Analysis](docs/DEEP_ANALYSIS.md) | CFG, data flow, language-specific patterns |
+| [Roadmap](docs/ROADMAP.md) | Development phases and comparison with alternatives |
 
 ---
 
-## Testing
+## Development
 
 ```bash
-pytest tests/ -v  # 137 passed, 22 skipped
+git clone https://github.com/Deaxu/ArchGraph.git
+cd ArchGraph
+pip install -e ".[dev,all]"
+pytest tests/ -v               # 212 passed, 22 skipped
 ```
 
-No external services required. Tests use temporary directories with real tree-sitter parsing and git operations.
+Tests run without Neo4j -- they use temporary directories with real tree-sitter parsing and git operations.
 
 ---
 
