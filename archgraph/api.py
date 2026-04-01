@@ -317,3 +317,82 @@ class ArchGraph:
         from archgraph.tool.impact import ImpactAnalyzer
         analyzer = ImpactAnalyzer(self._get_store())
         return analyzer.analyze_impact(symbol_id, direction, max_depth)
+
+    # ── Context ───────────────────────────────────────────────────────────
+
+    def context(self, symbol_id: str) -> dict[str, Any]:
+        """Get 360-degree view of a symbol — properties, callers, callees, cluster, security labels."""
+        store = self._get_store()
+        symbol = store.query(
+            "MATCH (n:_Node {_id: $id}) RETURN properties(n) AS props",
+            {"id": symbol_id},
+        )
+        if not symbol:
+            return {"error": f"Symbol not found: {symbol_id}"}
+
+        props = symbol[0].get("props", {})
+        props.pop("body", None)
+
+        callers = store.query(
+            "MATCH (f:Function)-[:CALLS]->(n:_Node {_id: $id}) "
+            "RETURN f._id AS id, f.name AS name, f.file AS file",
+            {"id": symbol_id},
+        )
+        callees = store.query(
+            "MATCH (n:_Node {_id: $id})-[:CALLS]->(f:Function) "
+            "RETURN f._id AS id, f.name AS name, f.file AS file",
+            {"id": symbol_id},
+        )
+        cluster = store.query(
+            "MATCH (n:_Node {_id: $id})-[:BELONGS_TO]->(c:Cluster) "
+            "RETURN c._id AS id, c.name AS name, c.cohesion AS cohesion",
+            {"id": symbol_id},
+        )
+        security = {
+            k: True for k in [
+                "is_input_source", "is_dangerous_sink", "is_allocator",
+                "is_crypto", "is_parser", "touches_unsafe",
+            ] if props.get(k)
+        }
+        return {
+            "symbol": {"id": symbol_id, "properties": props},
+            "callers": callers,
+            "callees": callees,
+            "cluster": cluster[0] if cluster else None,
+            "security_labels": security,
+        }
+
+    # ── Stats ─────────────────────────────────────────────────────────────
+
+    def stats(self) -> dict[str, Any]:
+        """Get graph statistics — node/edge counts, clusters, processes."""
+        store = self._get_store()
+        db_stats = store.stats()
+        cluster_count = store.query("MATCH (c:Cluster) RETURN count(c) AS count")
+        process_count = store.query("MATCH (p:Process) RETURN count(p) AS count")
+        return {
+            "graph_stats": db_stats,
+            "clusters": cluster_count[0]["count"] if cluster_count else 0,
+            "processes": process_count[0]["count"] if process_count else 0,
+        }
+
+    # ── Detect Changes ────────────────────────────────────────────────────
+
+    def detect_changes(self, changed_files: list[str]) -> dict[str, Any]:
+        """Analyze impact of changed files on the codebase."""
+        from archgraph.tool.impact import ImpactAnalyzer
+        analyzer = ImpactAnalyzer(self._get_store())
+        return analyzer.analyze_change_impact(changed_files)
+
+    # ── Find Vulnerabilities ──────────────────────────────────────────────
+
+    def find_vulnerabilities(self, severity: str | None = None) -> list[dict[str, Any]]:
+        """Find known CVE vulnerabilities affecting project dependencies."""
+        results = self._get_store().query(
+            "MATCH (d:Dependency)-[:AFFECTED_BY]->(v:Vulnerability) "
+            "RETURN d.name AS dependency, d.version AS version, "
+            "v.vuln_id AS vuln_id, v.summary AS summary, v.severity AS severity"
+        )
+        if severity:
+            results = [r for r in results if severity.upper() in (r.get("severity") or "").upper()]
+        return results

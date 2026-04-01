@@ -299,6 +299,101 @@ class ArchGraphTool(BaseTool):
         finally:
             ag.close()
 
+    @tool_method(
+        description="Get 360-degree view of a symbol — properties, callers, callees, cluster, security labels",
+        returns="dict with symbol properties, callers, callees, cluster, security labels",
+    )
+    def context(self, symbol_id: str) -> dict[str, Any]:
+        """Get 360-degree context of a symbol.
+
+        Args:
+            symbol_id: Symbol node ID.
+        """
+        from archgraph.api import ArchGraph
+        ag = ArchGraph(
+            neo4j_uri=self._store._uri,
+            neo4j_user=self._store._user,
+            neo4j_password=self._store._password,
+            neo4j_database=self._store._database,
+        )
+        try:
+            return ag.context(symbol_id)
+        finally:
+            ag.close()
+
+    @tool_method(
+        description="Get graph statistics — node/edge counts, clusters, processes",
+        returns="dict with graph_stats, clusters, processes counts",
+    )
+    def stats(self) -> dict[str, Any]:
+        """Get graph statistics."""
+        from archgraph.api import ArchGraph
+        ag = ArchGraph(
+            neo4j_uri=self._store._uri,
+            neo4j_user=self._store._user,
+            neo4j_password=self._store._password,
+            neo4j_database=self._store._database,
+        )
+        try:
+            return ag.stats()
+        finally:
+            ag.close()
+
+    @tool_method(
+        description="Analyze impact of changed files on the codebase",
+        returns="dict with affected functions, blast radius",
+    )
+    def detect_changes(self, changed_files: list[str]) -> dict[str, Any]:
+        """Analyze impact of changed files.
+
+        Args:
+            changed_files: List of changed file paths.
+        """
+        from archgraph.api import ArchGraph
+        ag = ArchGraph(
+            neo4j_uri=self._store._uri,
+            neo4j_user=self._store._user,
+            neo4j_password=self._store._password,
+            neo4j_database=self._store._database,
+        )
+        try:
+            return ag.detect_changes(changed_files)
+        finally:
+            ag.close()
+
+    @tool_method(
+        description="Analyze blast radius of a function — what it affects or what affects it",
+        returns="dict with immediate, downstream, transitive impacts and security flags",
+    )
+    def impact(
+        self,
+        symbol_id: str,
+        direction: str = "downstream",
+        max_depth: int = 5,
+    ) -> dict[str, Any]:
+        """Analyze blast radius of a function.
+
+        Args:
+            symbol_id: Function node ID.
+            direction: upstream=callers, downstream=callees, both.
+            max_depth: Maximum traversal depth (default 5).
+        """
+        from archgraph.api import ArchGraph
+        ag = ArchGraph(
+            neo4j_uri=self._store._uri,
+            neo4j_user=self._store._user,
+            neo4j_password=self._store._password,
+            neo4j_database=self._store._database,
+        )
+        try:
+            return ag.impact(symbol_id, direction, max_depth)
+        finally:
+            ag.close()
+
+    @tool_method(
+        description="Find known CVE vulnerabilities affecting project dependencies",
+        returns="list of vulnerability dicts with dependency, vuln_id, summary, severity",
+    )
     def find_vulnerabilities(
         self, severity: str | None = None
     ) -> list[dict[str, Any]]:
@@ -306,19 +401,18 @@ class ArchGraphTool(BaseTool):
 
         Args:
             severity: Optional severity filter substring (e.g. "CRITICAL", "HIGH").
-
-        Returns:
-            List of dicts with dependency name, vuln_id, summary, severity.
         """
-        cypher = (
-            "MATCH (d:Dependency)-[:AFFECTED_BY]->(v:Vulnerability) "
-            "RETURN d.name AS dependency, d.version AS version, "
-            "v.vuln_id AS vuln_id, v.summary AS summary, v.severity AS severity"
+        from archgraph.api import ArchGraph
+        ag = ArchGraph(
+            neo4j_uri=self._store._uri,
+            neo4j_user=self._store._user,
+            neo4j_password=self._store._password,
+            neo4j_database=self._store._database,
         )
-        results = self.query(cypher)
-        if severity:
-            results = [r for r in results if severity.upper() in (r.get("severity") or "").upper()]
-        return results
+        try:
+            return ag.find_vulnerabilities(severity)
+        finally:
+            ag.close()
 
     def diff_summary(
         self,
