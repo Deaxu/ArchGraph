@@ -102,23 +102,298 @@ class TypeScriptIndexer:
             return False
 
 
-# TODO: class PythonIndexer(ScipIndexer): ...   # pip install scip-python
-# TODO: class JavaIndexer(ScipIndexer): ...     # scip-java JAR download
-# TODO: class RustIndexer(ScipIndexer): ...     # rust-analyzer --scip
-# TODO: class GoIndexer(ScipIndexer): ...       # go install scip-go
-# TODO: class ClangIndexer(ScipIndexer): ...    # scip-clang binary
+class PythonIndexer:
+    """SCIP indexer for Python using @sourcegraph/scip-python (Pyright-based).
+
+    Note: scip-python has a known Windows bug (path.sep regex issue).
+    On Windows, install will verify the indexer actually works before returning True.
+    """
+
+    language = "python"
+
+    def install(self, repo_path: Path) -> bool:
+        if not shutil.which("npm"):
+            logger.warning("npm not found — cannot install scip-python")
+            return False
+        if self._is_available():
+            return True
+
+        logger.info("Installing @sourcegraph/scip-python...")
+        subprocess.run(
+            ["npm", "install", "-g", "@sourcegraph/scip-python"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if not self._is_available():
+            import sys
+            if sys.platform == "win32":
+                logger.warning(
+                    "scip-python has a known bug on Windows (path.sep regex). "
+                    "Falling back to heuristic resolver for Python."
+                )
+            return False
+        return True
+
+    def index(self, repo_path: Path) -> Path | None:
+        output_dir = repo_path / ".archgraph"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "index.scip"
+
+        cmd = [
+            "npx", "scip-python", "index",
+            "--project-name", repo_path.name,
+            "--output", str(output_path),
+            "--cwd", str(repo_path),
+        ]
+
+        logger.info("Running scip-python index...")
+        try:
+            result = subprocess.run(
+                cmd, cwd=str(repo_path),
+                capture_output=True, text=True, timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("scip-python timed out")
+            return None
+
+        if result.returncode != 0:
+            logger.warning("scip-python failed: %s", result.stderr[:500])
+            return None
+        return output_path if output_path.exists() else None
+
+    def _is_available(self) -> bool:
+        try:
+            # --help alone isn't enough — scip-python crashes on Windows at import time
+            result = subprocess.run(
+                ["npx", "scip-python", "--help"],
+                capture_output=True, text=True, timeout=30,
+            )
+            # If stderr contains "SyntaxError" or "RegExp", it's the Windows bug
+            if result.returncode != 0 or "SyntaxError" in (result.stderr or ""):
+                return False
+            return True
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
 
 
-INDEXER_REGISTRY: dict[str, type[TypeScriptIndexer]] = {
+class JavaIndexer:
+    """SCIP indexer for Java/Kotlin using scip-java (via coursier launcher)."""
+
+    language = "java"
+    _COURSIER_URL = "https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-win32.zip"
+
+    def install(self, repo_path: Path) -> bool:
+        if not shutil.which("java"):
+            logger.warning("java not found — cannot run scip-java")
+            return False
+        if self._is_available():
+            return True
+
+        # scip-java is distributed via coursier. Install coursier first.
+        if not shutil.which("cs") and not shutil.which("coursier"):
+            logger.info("Installing coursier for scip-java...")
+            try:
+                import platform
+                if platform.system() == "Windows":
+                    # Use npm to install coursier
+                    subprocess.run(
+                        ["npm", "install", "-g", "coursier"],
+                        capture_output=True, text=True, timeout=120,
+                    )
+                else:
+                    subprocess.run(
+                        ["curl", "-fL", "https://get-coursier.io/coursier", "|", "sh"],
+                        capture_output=True, text=True, timeout=120, shell=True,
+                    )
+            except Exception as e:
+                logger.warning("Failed to install coursier: %s", e)
+
+        # Install scip-java via coursier
+        cs = shutil.which("cs") or shutil.which("coursier")
+        if cs:
+            logger.info("Installing scip-java via coursier...")
+            subprocess.run(
+                [cs, "install", "scip-java"],
+                capture_output=True, text=True, timeout=120,
+            )
+        return self._is_available()
+
+    def index(self, repo_path: Path) -> Path | None:
+        if not (repo_path / "build.gradle").exists() \
+           and not (repo_path / "build.gradle.kts").exists() \
+           and not (repo_path / "pom.xml").exists():
+            logger.warning("No build.gradle or pom.xml found — scip-java requires a build tool")
+            return None
+
+        output_dir = repo_path / ".archgraph"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "index.scip"
+
+        cmd = ["scip-java", "index", "--output", str(output_path)]
+
+        logger.info("Running scip-java index...")
+        try:
+            result = subprocess.run(
+                cmd, cwd=str(repo_path),
+                capture_output=True, text=True, timeout=600,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("scip-java timed out")
+            return None
+
+        if result.returncode != 0:
+            logger.warning("scip-java failed: %s", result.stderr[:500])
+            return None
+        return output_path if output_path.exists() else None
+
+    def _is_available(self) -> bool:
+        try:
+            result = subprocess.run(
+                ["scip-java", "--help"],
+                capture_output=True, timeout=15,
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+
+class RustIndexer:
+    """SCIP indexer for Rust using rust-analyzer."""
+
+    language = "rust"
+
+    def install(self, repo_path: Path) -> bool:
+        if self._is_available():
+            return True
+
+        if not shutil.which("rustup"):
+            logger.warning("rustup not found — cannot install rust-analyzer")
+            return False
+
+        logger.info("Installing rust-analyzer via rustup...")
+        result = subprocess.run(
+            ["rustup", "component", "add", "rust-analyzer"],
+            capture_output=True, text=True, timeout=120,
+        )
+        return result.returncode == 0 and self._is_available()
+
+    def index(self, repo_path: Path) -> Path | None:
+        if not (repo_path / "Cargo.toml").exists():
+            logger.warning("No Cargo.toml found — rust-analyzer requires a Cargo project")
+            return None
+
+        output_dir = repo_path / ".archgraph"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "index.scip"
+
+        cmd = ["rust-analyzer", "scip", str(repo_path)]
+
+        logger.info("Running rust-analyzer scip...")
+        try:
+            result = subprocess.run(
+                cmd, cwd=str(repo_path),
+                capture_output=True, timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("rust-analyzer timed out")
+            return None
+
+        if result.returncode != 0:
+            logger.warning("rust-analyzer scip failed: %s", result.stderr[:500] if result.stderr else "")
+            return None
+
+        # rust-analyzer outputs to index.scip in cwd by default
+        default_output = repo_path / "index.scip"
+        if default_output.exists() and default_output != output_path:
+            if output_path.exists():
+                output_path.unlink()
+            default_output.rename(output_path)
+        return output_path if output_path.exists() else None
+
+    def _is_available(self) -> bool:
+        try:
+            result = subprocess.run(
+                ["rust-analyzer", "--version"],
+                capture_output=True, timeout=15,
+            )
+            return result.returncode == 0
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+
+class GoIndexer:
+    """SCIP indexer for Go using scip-go."""
+
+    language = "go"
+
+    def install(self, repo_path: Path) -> bool:
+        if self._is_available():
+            return True
+
+        if not shutil.which("go"):
+            logger.warning("go not found — cannot install scip-go")
+            return False
+
+        logger.info("Installing scip-go...")
+        result = subprocess.run(
+            ["go", "install", "github.com/sourcegraph/scip-go/cmd/scip-go@latest"],
+            capture_output=True, text=True, timeout=120,
+            env={**__import__("os").environ, "GOBIN": str(Path.home() / "go" / "bin")},
+        )
+        return result.returncode == 0 and self._is_available()
+
+    def index(self, repo_path: Path) -> Path | None:
+        if not (repo_path / "go.mod").exists():
+            logger.warning("No go.mod found — scip-go requires a Go module")
+            return None
+
+        output_dir = repo_path / ".archgraph"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "index.scip"
+
+        scip_go = self._scip_go_path()
+        if not scip_go:
+            return None
+        cmd = [scip_go, "--output", str(output_path)]
+
+        logger.info("Running scip-go index...")
+        try:
+            result = subprocess.run(
+                cmd, cwd=str(repo_path),
+                capture_output=True, text=True, timeout=300,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("scip-go timed out")
+            return None
+
+        if result.returncode != 0:
+            logger.warning("scip-go failed: %s", result.stderr[:500])
+            return None
+        return output_path if output_path.exists() else None
+
+    def _scip_go_path(self) -> str | None:
+        """Find scip-go binary, including GOBIN."""
+        path = shutil.which("scip-go")
+        if path:
+            return path
+        gobin = Path.home() / "go" / "bin"
+        for name in ("scip-go", "scip-go.exe"):
+            candidate = gobin / name
+            if candidate.exists():
+                return str(candidate)
+        return None
+
+    def _is_available(self) -> bool:
+        return self._scip_go_path() is not None
+
+
+INDEXER_REGISTRY: dict[str, type] = {
     "typescript": TypeScriptIndexer,
     "javascript": TypeScriptIndexer,
-    # "python": PythonIndexer,    # TODO
-    # "java": JavaIndexer,        # TODO
-    # "kotlin": JavaIndexer,      # TODO
-    # "rust": RustIndexer,        # TODO
-    # "go": GoIndexer,            # TODO
-    # "c": ClangIndexer,          # TODO
-    # "cpp": ClangIndexer,        # TODO
+    "python": PythonIndexer,
+    "java": JavaIndexer,
+    "kotlin": JavaIndexer,
+    "rust": RustIndexer,
+    "go": GoIndexer,
 }
 
 
