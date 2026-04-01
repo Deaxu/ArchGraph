@@ -34,6 +34,8 @@ archgraph extract REPO_PATH [OPTIONS]
 | `--include-cve/--no-cve` | `False` | Enable CVE enrichment |
 | `--include-clustering/--no-clustering` | `False` | Enable cluster detection |
 | `--include-process/--no-process` | `False` | Enable process tracing |
+| `--include-body/--no-body` | `True` | Store source code bodies in graph nodes |
+| `--max-body-size` | `51200` | Max body size in bytes (truncate beyond) |
 | `--incremental/--no-incremental` | `False` | Incremental extraction |
 | `--clear-db/--no-clear-db` | `False` | Clear database before import |
 | `-v, --verbose` | `False` | Verbose output |
@@ -329,15 +331,19 @@ All Neo4j options can be set via environment variables:
 
 ## Supported Languages
 
-| Language | Extensions | Deep Analysis |
-|----------|-----------|---------------|
-| C | `.c`, `.h` | libclang (CFG, data flow, taint) |
-| C++ | `.cpp`, `.cxx`, `.cc`, `.hpp`, `.hxx`, `.hh` | libclang |
-| Rust | `.rs` | tree-sitter deep |
-| Java | `.java` | tree-sitter deep |
-| Go | `.go` | tree-sitter deep |
-| JavaScript | `.js`, `.mjs`, `.cjs`, `.jsx` | — |
-| TypeScript | `.ts`, `.tsx` | — |
-| Kotlin | `.kt`, `.kts` | tree-sitter deep (optional) |
-| Swift | `.swift` | tree-sitter deep (optional) |
-| Objective-C | `.m`, `.mm` | — (optional) |
+| Language | Extensions | SCIP Indexer | Deep Analysis |
+|----------|-----------|-------------|---------------|
+| TypeScript | `.ts`, `.tsx` | `@sourcegraph/scip-typescript` (auto) | — |
+| JavaScript | `.js`, `.mjs`, `.cjs`, `.jsx` | `@sourcegraph/scip-typescript` (auto) | — |
+| Rust | `.rs` | `rust-analyzer` (auto) | tree-sitter deep |
+| Go | `.go` | `scip-go` (auto) | tree-sitter deep |
+| Java | `.java` | `scip-java` (auto) | tree-sitter deep |
+| Kotlin | `.kt`, `.kts` | `scip-java` (auto) | tree-sitter deep (optional) |
+| Python | `.py` | `@sourcegraph/scip-python` | — |
+| C | `.c`, `.h` | — (heuristic fallback) | libclang (CFG, data flow, taint) |
+| C++ | `.cpp`, `.cxx`, `.cc`, `.hpp`, `.hxx`, `.hh` | — (heuristic fallback) | libclang |
+| Swift | `.swift` | — | tree-sitter deep (optional) |
+| Objective-C | `.m`, `.mm` | — | — (optional) |
+
+SCIP indexers are installed automatically on first extraction. They use each language's
+own compiler/type-checker for ~82% call resolution accuracy vs ~43% heuristic.

@@ -143,6 +143,80 @@ Find CVE vulnerabilities in project dependencies.
 }
 ```
 
+### `source`
+
+Get source code of a function, class, struct, or other symbol.
+
+```json
+{
+  "name": "source",
+  "arguments": {
+    "symbol_id": "func:src/constants/prompts.ts:getSystemPrompt:443"
+  }
+}
+```
+
+Returns body, name, file, line range, body_lines, body_truncated.
+
+### `extract`
+
+Extract code graph from a repository. Auto-detects languages, runs SCIP compiler-backed indexers, imports to Neo4j.
+
+```json
+{
+  "name": "extract",
+  "arguments": {
+    "repo": "https://github.com/oboard/claude-code-rev",
+    "languages": "auto",
+    "clear_db": true
+  }
+}
+```
+
+Returns node/edge counts, extraction time, SCIP resolution stats.
+
+### `search`
+
+Search for symbols by name, type, or file pattern. No Cypher needed.
+
+```json
+{
+  "name": "search",
+  "arguments": {
+    "name": "getSystemPrompt",
+    "type": "function",
+    "file_pattern": "*prompts*"
+  }
+}
+```
+
+### `search_calls`
+
+Find call relationships between functions. Supports transitive call chains.
+
+```json
+{
+  "name": "search_calls",
+  "arguments": {
+    "target": "getSystemPrompt",
+    "resolved_only": true,
+    "max_depth": 3,
+    "limit": 10
+  }
+}
+```
+
+### `repos`
+
+List all extracted and indexed repositories.
+
+```json
+{
+  "name": "repos",
+  "arguments": {}
+}
+```
+
 ### `cypher` / `stats`
 
 - `cypher`: Raw Cypher query (alias for `query`)
@@ -263,35 +337,50 @@ Agent:
 
 ---
 
-## Python API (Direct Integration)
+## Python API
 
-For custom agent frameworks:
+High-level API for programmatic access:
 
 ```python
-from archgraph.graph.neo4j_store import Neo4jStore
-from archgraph.tool.impact import ImpactAnalyzer
-from archgraph.search import HybridSearcher
-from archgraph.skills import SkillGenerator
+from archgraph import ArchGraph
 
-# Connect
-store = Neo4jStore("bolt://localhost:7687")
-store.connect()
+with ArchGraph() as ag:
+    # Extract a repo (clone + detect languages + SCIP + Neo4j import)
+    result = ag.extract("https://github.com/oboard/claude-code-rev")
+    print(f"{result['nodes']} nodes, {result['edges']} edges")
 
-# Impact analysis
-impact = ImpactAnalyzer(store)
-result = impact.analyze_impact("func:src/auth.c:validate:42", direction="both")
+    # Search symbols
+    funcs = ag.search(name="getSystemPrompt", type="function")
 
-# Hybrid search
-searcher = HybridSearcher(store)
-searcher.build_index()
-results = searcher.search("authentication bypass", top_k=10)
+    # Search call chains
+    calls = ag.search_calls(target="getSystemPrompt", resolved_only=True)
 
-# Generate skills
-generator = SkillGenerator(store)
-skill_files = generator.generate_skills(Path("/path/to/repo"))
+    # Get source code
+    source = ag.source(funcs[0]["id"])
 
-store.close()
+    # 360° context
+    ctx = ag.context(funcs[0]["id"])
+
+    # Blast radius
+    impact = ag.impact(funcs[0]["id"], direction="downstream", max_depth=5)
+
+    # Graph stats
+    stats = ag.stats()
+
+    # Raw Cypher
+    results = ag.query("MATCH (f:Function) RETURN f.name LIMIT 5")
+
+    # Vulnerability scan
+    vulns = ag.find_vulnerabilities(severity="CRITICAL")
+
+    # Change impact
+    changes = ag.detect_changes(["src/auth.ts", "src/api.ts"])
+
+    # List repos
+    repos = ag.repos()
 ```
+
+All 11 tools available: `extract`, `search`, `repos`, `search_calls`, `query`, `source`, `context`, `stats`, `impact`, `detect_changes`, `find_vulnerabilities`.
 
 ---
 

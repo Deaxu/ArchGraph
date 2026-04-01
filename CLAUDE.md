@@ -13,7 +13,7 @@ pip install -e ".[dev]"
 ## Testler
 
 ```bash
-# Tüm testler (159 collected — 137 passed, 22 skipped)
+# Tüm testler (212 collected — 212 passed, 22 skipped)
 pytest tests/ -v
 ```
 
@@ -45,14 +45,18 @@ Test dosyaları Neo4j gerektirmez. Tree-sitter ve git testleri `tmp_path` fixtur
 | Dosya | Açıklama |
 |-------|----------|
 | `archgraph/config.py` | Tüm sabitler, güvenlik pattern'leri, `ExtractConfig` dataclass |
-| `archgraph/graph/builder.py` | 9-adım pipeline orkestrasyon (parallel/sequential) |
+| `archgraph/graph/builder.py` | 11-adım + Step 4.5 pipeline orkestrasyon (parallel/sequential) |
 | `archgraph/graph/schema.py` | `Node`/`Edge` dataclass, `NodeLabel`/`EdgeType` sabitleri |
 | `archgraph/graph/neo4j_store.py` | Neo4j batch import, `_Node` label, `_id` unique |
 | `archgraph/extractors/treesitter.py` | Ana extractor, 10 dil, thread-local parser |
 | `archgraph/extractors/clang.py` | libclang deep analysis (CFG, data flow, taint) |
 | `archgraph/extractors/deep/` | Tree-sitter deep analysis (Rust, Java, Go, Kotlin, Swift) |
 | `archgraph/enrichment/cve.py` | CVE enrichment — OSV API batch query |
-| `archgraph/tool/archgraph_tool.py` | rlm-agent tool (standalone, BaseTool bağımlılığı yok) |
+| `archgraph/tool/archgraph_tool.py` | rlm-agent tool (11 tool method, BaseTool bağımlılığı yok) |
+| `archgraph/api.py` | Python API — `ArchGraph` sınıfı, tüm tool'ların programmatik erişimi |
+| `archgraph/extractors/scip_resolver.py` | SCIP compiler-backed call resolution (TS/JS/Rust/Go/Java/Python) |
+| `archgraph/extractors/call_resolver.py` | Heuristic call resolution (SCIP fallback, 4-seviye zincir) |
+| `archgraph/mcp/server.py` | MCP server — 11 tool, 4 resource |
 
 ## Dokümantasyon
 
