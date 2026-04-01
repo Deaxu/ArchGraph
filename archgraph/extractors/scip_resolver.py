@@ -827,12 +827,28 @@ class ScipResolver:
             if not n.id.startswith("funcref:") or n.id in referenced_ids
         ]
 
+    def _languages_present_in_repo(self) -> set[str]:
+        """Check which languages actually have source files in the repo."""
+        from archgraph.config import EXTENSION_MAP
+        present: set[str] = set()
+        for node in self._graph.nodes:
+            if node.label == NodeLabel.FILE:
+                path = node.properties.get("path", "")
+                ext = "." + path.rsplit(".", 1)[-1] if "." in path else ""
+                lang = EXTENSION_MAP.get(ext.lower(), "")
+                if lang:
+                    present.add(lang)
+        return present
+
     def resolve(self) -> GraphData:
         """Run SCIP indexers, apply results, fallback to heuristic for uncovered languages."""
         scip_languages: set[str] = set()
         scip_data: bytes | None = None
+        present = self._languages_present_in_repo()
 
         for lang in self._languages:
+            if lang not in present:
+                continue
             indexer_cls = INDEXER_REGISTRY.get(lang)
             if indexer_cls is None:
                 continue

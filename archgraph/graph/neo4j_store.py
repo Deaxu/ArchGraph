@@ -138,19 +138,23 @@ class Neo4jStore:
                 logger.debug("Deleted batch of %d nodes", deleted)
             logger.info("Cleared all graph data")
 
-    def import_graph(self, graph: GraphData) -> dict[str, int]:
+    def import_graph(
+        self, graph: GraphData, *, use_create: bool = False,
+    ) -> dict[str, int]:
         """Bulk import nodes and edges into Neo4j. Returns counts.
 
-        Automatically uses APOC procedures if available for better performance.
+        Args:
+            use_create: Use CREATE instead of MERGE. Much faster when the
+                        database has been cleared beforehand.
         """
         if self._detect_apoc():
             return self._import_graph_apoc(graph)
 
-        node_count = self._import_nodes(graph.nodes)
-        edge_count = self._import_edges(graph.edges)
+        node_count = self._import_nodes(graph.nodes, use_create=use_create)
+        edge_count = self._import_edges(graph.edges, use_create=use_create)
         return {"nodes_imported": node_count, "edges_imported": edge_count}
 
-    def _import_nodes(self, nodes: list[Node]) -> int:
+    def _import_nodes(self, nodes: list[Node], *, use_create: bool = False) -> int:
         """Batch-import nodes."""
         if not nodes:
             return 0
@@ -171,13 +175,21 @@ class Neo4jStore:
                         props["_id"] = node.id
                         records.append(props)
 
-                    session.run(
-                        f"UNWIND $records AS props "
-                        f"MERGE (n:{label} {{_id: props._id}}) "
-                        f"SET n += props "
-                        f"SET n:_Node",
-                        records=records,
-                    )
+                    if use_create:
+                        session.run(
+                            f"UNWIND $records AS props "
+                            f"CREATE (n:{label}:_Node) "
+                            f"SET n += props",
+                            records=records,
+                        )
+                    else:
+                        session.run(
+                            f"UNWIND $records AS props "
+                            f"MERGE (n:{label} {{_id: props._id}}) "
+                            f"SET n += props "
+                            f"SET n:_Node",
+                            records=records,
+                        )
                     total += len(batch)
 
                 logger.debug("Imported %d %s nodes", len(label_nodes), label)
@@ -185,7 +197,7 @@ class Neo4jStore:
         logger.info("Imported %d nodes total", total)
         return total
 
-    def _import_edges(self, edges: list[Edge]) -> int:
+    def _import_edges(self, edges: list[Edge], *, use_create: bool = False) -> int:
         """Batch-import edges."""
         if not edges:
             return 0
@@ -207,14 +219,24 @@ class Neo4jStore:
                         rec["_tgt"] = edge.target_id
                         records.append(rec)
 
-                    session.run(
-                        f"UNWIND $records AS rec "
-                        f"MATCH (a:_Node {{_id: rec._src}}) "
-                        f"MATCH (b:_Node {{_id: rec._tgt}}) "
-                        f"MERGE (a)-[r:{rel_type}]->(b) "
-                        f"SET r += rec",
-                        records=records,
-                    )
+                    if use_create:
+                        session.run(
+                            f"UNWIND $records AS rec "
+                            f"MATCH (a:_Node {{_id: rec._src}}) "
+                            f"MATCH (b:_Node {{_id: rec._tgt}}) "
+                            f"CREATE (a)-[r:{rel_type}]->(b) "
+                            f"SET r += rec",
+                            records=records,
+                        )
+                    else:
+                        session.run(
+                            f"UNWIND $records AS rec "
+                            f"MATCH (a:_Node {{_id: rec._src}}) "
+                            f"MATCH (b:_Node {{_id: rec._tgt}}) "
+                            f"MERGE (a)-[r:{rel_type}]->(b) "
+                            f"SET r += rec",
+                            records=records,
+                        )
                     total += len(batch)
 
                 logger.debug("Imported %d %s edges", len(type_edges), rel_type)

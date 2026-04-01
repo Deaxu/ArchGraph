@@ -103,13 +103,13 @@ SCIP indexers are downloaded automatically on first use. Install all optional gr
 | Feature | **ArchGraph** | **GitNexus** | **Sourcegraph** | **CodeQL** |
 |---------|---------------|--------------|-----------------|------------|
 | **License** | MIT | PolyForm NC | BSL | Proprietary |
-| **Languages** | 11 | 13 | 40+ | 10+ |
-| **MCP Server** | 12 tools | 7 tools | -- | -- |
+| **Languages** | 11 | 15 | 40+ | 10+ |
+| **MCP Server** | 12 tools | 11 tools | -- | -- |
 | **SCIP Resolution** | 6 languages | -- | Internal | -- |
 | **Taint Analysis** | libclang + tree-sitter | -- | -- | QL queries |
 | **CVE Detection** | OSV API | -- | Yes | Advisory DB |
 | **Local-first** | Yes | Yes | No (SaaS) | Yes |
-| **Graph DB** | Neo4j (Cypher) | KuzuDB | PostgreSQL | Custom |
+| **Graph DB** | Neo4j (Cypher) | LadybugDB | PostgreSQL | Custom |
 
 ---
 

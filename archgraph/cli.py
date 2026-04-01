@@ -261,7 +261,7 @@ def extract(
 
                 store.create_indexes()
                 import_start = time.time()
-                result = store.import_graph(graph)
+                result = store.import_graph(graph, use_create=clear_db)
                 import_time = time.time() - import_start
 
                 console.print(

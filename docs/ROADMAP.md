@@ -80,13 +80,13 @@
 |---------|---------------|--------------|-----------------|------------|
 | **License** | MIT | PolyForm NC | BSL | Proprietary |
 | **Language** | Python | TypeScript | Go | C++/JS |
-| **Graph DB** | Neo4j | KuzuDB | PostgreSQL | Custom |
-| **Languages** | 11 | 13 | 40+ | 10+ |
-| **MCP Server** | ✅ 12 tools | ✅ 7 tools | ❌ | ❌ |
-| **SCIP Resolution** | ✅ 7 languages | ❌ | ✅ (internal) | ❌ |
-| **Python API** | ✅ 11 methods | ❌ | ❌ | ❌ |
-| **Body Storage** | ✅ | ❌ | ❌ | ❌ |
-| **Web UI** | ✅ FastAPI | ✅ React | ✅ | ❌ |
+| **Graph DB** | Neo4j | LadybugDB | PostgreSQL | Custom |
+| **Languages** | 11 | 15 | 40+ | 10+ |
+| **MCP Server** | ✅ 12 tools | ✅ 11 tools | ❌ | ❌ |
+| **SCIP Resolution** | ✅ 6 languages | ❌ | ✅ (internal) | ❌ |
+| **Python API** | ✅ 12 methods | ❌ | ❌ | ❌ |
+| **Body Storage** | ✅ | ✅ | ❌ | ❌ |
+| **Web UI** | ✅ FastAPI | ✅ React + Sigma.js | ✅ | ❌ |
 | **Taint Analysis** | ✅ libclang | ❌ | ❌ | ✅ |
 | **CVE Detection** | ✅ OSV API | ❌ | ✅ | ✅ |
 | **Clustering** | ✅ Leiden | ✅ Leiden | ❌ | ❌ |
