@@ -2,7 +2,7 @@
 
 ## Phase 1: Core Extraction ✅ COMPLETE
 
-- [x] Tree-sitter multi-language parser (10 languages)
+- [x] Tree-sitter multi-language parser (11 languages)
 - [x] Git history extraction (commits, authors, tags, numstat)
 - [x] Dependency extraction (10 package managers)
 - [x] Annotation scanning (TODO, HACK, FIXME, etc.)
@@ -57,7 +57,7 @@
   - [x] Rust via `rust-analyzer` (auto-install via rustup)
   - [x] Go via `scip-go` (auto-install via go install)
   - [x] Java/Kotlin via `scip-java` (coursier-based)
-  - [x] Python via `@sourcegraph/scip-python` (Windows bug — graceful fallback)
+  - [x] Python via `@sourcegraph/scip-python` (auto-install + Windows auto-patch)
   - [x] Heuristic fallback for C/C++ and unsupported languages
   - [x] 82% resolution rate (vs 43% heuristic) on real-world projects
 - [x] **Qualifier Preservation** — `Counter.increment()` → qualifier + name tracked
@@ -81,9 +81,9 @@
 | **License** | MIT | PolyForm NC | BSL | Proprietary |
 | **Language** | Python | TypeScript | Go | C++/JS |
 | **Graph DB** | Neo4j | KuzuDB | PostgreSQL | Custom |
-| **Languages** | 10 | 13 | 40+ | 10+ |
+| **Languages** | 11 | 13 | 40+ | 10+ |
 | **MCP Server** | ✅ 11 tools | ✅ 7 tools | ❌ | ❌ |
-| **SCIP Resolution** | ✅ 6 languages | ❌ | ✅ (internal) | ❌ |
+| **SCIP Resolution** | ✅ 7 languages | ❌ | ✅ (internal) | ❌ |
 | **Python API** | ✅ 11 methods | ❌ | ❌ | ❌ |
 | **Body Storage** | ✅ | ❌ | ❌ | ❌ |
 | **Web UI** | ✅ FastAPI | ✅ React | ✅ | ❌ |

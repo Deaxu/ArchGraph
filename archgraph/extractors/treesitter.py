@@ -120,6 +120,13 @@ _LANG_NODE_TYPES: dict[str, dict[str, list[str]]] = {
         "import": ["import_declaration"],
         "call": ["call_expression"],
     },
+    "python": {
+        "function_def": ["function_definition"],
+        "class": ["class_definition"],
+        "import": ["import_statement", "import_from_statement"],
+        "call": ["call"],
+        "decorator": ["decorated_definition"],
+    },
     "objc": {
         "function_def": ["function_definition", "method_definition"],
         "class": ["class_interface", "class_implementation"],
@@ -441,6 +448,14 @@ class TreeSitterExtractor(BaseExtractor):
         # --- Impl blocks (Rust) ---
         if node_type in lang_types.get("impl", []):
             self._extract_impl(node, source, lang, lang_types, file_id, rel_path, graph)
+            return
+
+        # --- Decorated definitions (Python) — unwrap to inner def/class ---
+        if node_type in lang_types.get("decorator", []):
+            for child in node.children:
+                self._walk_tree(
+                    child, source, lang, lang_types, file_id, rel_path, graph, parent_id
+                )
             return
 
         # Recurse
@@ -886,6 +901,20 @@ class TreeSitterExtractor(BaseExtractor):
     ) -> None:
         """Extract INHERITS and IMPLEMENTS edges from class definitions."""
         # Look for base class / superclass specifiers
+        # Python: class Foo(Base1, Base2): — superclasses in argument_list
+        for child in node.children:
+            if child.type == "argument_list" and lang == "python":
+                for arg in child.children:
+                    if arg.type == "identifier":
+                        base_name = _node_text(arg, source)
+                        base_id = f"class:{rel_path}:{base_name}"
+                        graph.add_edge(cls_id, base_id, EdgeType.INHERITS)
+                    elif arg.type == "attribute":
+                        base_name = _node_text(arg, source)
+                        base_id = f"class:{rel_path}:{base_name}"
+                        graph.add_edge(cls_id, base_id, EdgeType.INHERITS)
+                return
+
         for child in node.children:
             if child.type in (
                 "base_class_clause",      # C++
@@ -1034,6 +1063,9 @@ class TreeSitterExtractor(BaseExtractor):
         # Rust: use foo::bar;
         if text.startswith("use "):
             return text[4:].rstrip(";").strip()
+        # Python: from X import Y (starts with 'from', has ' import ')
+        if text.startswith("from ") and " import " in text:
+            return text[5:text.index(" import ")].strip().lstrip(".")
         # JS/TS: import { x } from "module" or import "module" (check BEFORE Java)
         if "from" in text:
             parts = text.split("from")
@@ -1060,6 +1092,14 @@ class TreeSitterExtractor(BaseExtractor):
         # C/C++: #include — no named imports
         if text.startswith("#include"):
             return ""
+
+        # Python: from X import a, b, c (starts with 'from', has ' import ')
+        if text.startswith("from ") and " import " in text:
+            after_import = text[text.index(" import ") + 8:].strip().rstrip(")")
+            if after_import == "*":
+                return ""
+            names = [n.strip().split(" as ")[-1].strip() for n in after_import.split(",") if n.strip()]
+            return ",".join(names)
 
         # JS/TS: import { foo, bar } from "module"
         if "from" in text and "import" in text:

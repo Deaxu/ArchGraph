@@ -5,9 +5,13 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Protocol, runtime_checkable
+
+# On Windows, .CMD wrappers installed by npm need shell=True.
+_SHELL = sys.platform == "win32"
 
 from archgraph.extractors import scip_pb2
 from archgraph.graph.schema import Edge, GraphData, Node, NodeLabel, EdgeType
@@ -44,9 +48,7 @@ class TypeScriptIndexer:
         result = subprocess.run(
             ["npm", "install", "--save-dev", "@sourcegraph/scip-typescript"],
             cwd=str(repo_path),
-            capture_output=True,
-            text=True,
-            timeout=120,
+            capture_output=True, text=True, timeout=120, shell=_SHELL,
         )
         if result.returncode == 0 and self._is_available(repo_path):
             return True
@@ -54,9 +56,7 @@ class TypeScriptIndexer:
         logger.info("Repo-local install failed, trying global...")
         subprocess.run(
             ["npm", "install", "-g", "@sourcegraph/scip-typescript"],
-            capture_output=True,
-            text=True,
-            timeout=120,
+            capture_output=True, text=True, timeout=120, shell=_SHELL,
         )
         return self._is_available(repo_path)
 
@@ -74,9 +74,7 @@ class TypeScriptIndexer:
             result = subprocess.run(
                 cmd,
                 cwd=str(repo_path),
-                capture_output=True,
-                text=True,
-                timeout=300,
+                capture_output=True, text=True, timeout=300, shell=_SHELL,
             )
         except subprocess.TimeoutExpired:
             logger.warning("scip-typescript timed out")
@@ -94,8 +92,7 @@ class TypeScriptIndexer:
             result = subprocess.run(
                 ["npx", "scip-typescript", "--version"],
                 cwd=str(repo_path),
-                capture_output=True,
-                timeout=30,
+                capture_output=True, timeout=30, shell=_SHELL,
             )
             return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
@@ -105,11 +102,17 @@ class TypeScriptIndexer:
 class PythonIndexer:
     """SCIP indexer for Python using @sourcegraph/scip-python (Pyright-based).
 
-    Note: scip-python has a known Windows bug (path.sep regex issue).
-    On Windows, install will verify the indexer actually works before returning True.
+    scip-python has a known Windows bug: ``new RegExp(path.sep, 'g')`` creates
+    an invalid regex because ``path.sep`` is ``\\`` on Windows.  After install,
+    we auto-patch the bundled JS to replace the broken regex with a safe
+    ``split/join`` alternative.  The patch is idempotent.
     """
 
     language = "python"
+
+    # The broken pattern in the minified bundle and its safe replacement.
+    _BUG_PATTERN = 'new RegExp(o.sep,"g")'
+    _BUG_FIX = '(/[/\\\\]/g)'  # matches both / and \ on all platforms
 
     def install(self, repo_path: Path) -> bool:
         if not shutil.which("npm"):
@@ -121,15 +124,14 @@ class PythonIndexer:
         logger.info("Installing @sourcegraph/scip-python...")
         subprocess.run(
             ["npm", "install", "-g", "@sourcegraph/scip-python"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, timeout=120, shell=_SHELL,
         )
+
+        # Auto-patch the Windows bug
+        self._patch_windows_bug()
+
         if not self._is_available():
-            import sys
-            if sys.platform == "win32":
-                logger.warning(
-                    "scip-python has a known bug on Windows (path.sep regex). "
-                    "Falling back to heuristic resolver for Python."
-                )
+            logger.warning("scip-python install failed or is broken")
             return False
         return True
 
@@ -139,7 +141,7 @@ class PythonIndexer:
         output_path = output_dir / "index.scip"
 
         cmd = [
-            "npx", "scip-python", "index",
+            "scip-python", "index",
             "--project-name", repo_path.name,
             "--output", str(output_path),
             "--cwd", str(repo_path),
@@ -149,7 +151,7 @@ class PythonIndexer:
         try:
             result = subprocess.run(
                 cmd, cwd=str(repo_path),
-                capture_output=True, text=True, timeout=300,
+                capture_output=True, text=True, timeout=300, shell=_SHELL,
             )
         except subprocess.TimeoutExpired:
             logger.warning("scip-python timed out")
@@ -161,18 +163,84 @@ class PythonIndexer:
         return output_path if output_path.exists() else None
 
     def _is_available(self) -> bool:
+        # Use the globally installed binary directly (not npx, which caches its own copy).
+        if not shutil.which("scip-python"):
+            return False
         try:
-            # --help alone isn't enough — scip-python crashes on Windows at import time
             result = subprocess.run(
-                ["npx", "scip-python", "--help"],
-                capture_output=True, text=True, timeout=30,
+                ["scip-python", "--help"],
+                capture_output=True, text=True, timeout=30, shell=_SHELL,
             )
-            # If stderr contains "SyntaxError" or "RegExp", it's the Windows bug
             if result.returncode != 0 or "SyntaxError" in (result.stderr or ""):
                 return False
             return True
         except (subprocess.TimeoutExpired, FileNotFoundError):
             return False
+
+    def _patch_windows_bug(self) -> None:
+        """Patch scip-python's bundled JS to fix the path.sep regex bug.
+
+        The bug: ``new RegExp(path.sep, 'g')`` where path.sep='\\' on Windows
+        creates an invalid regex.  We replace it with a literal regex that
+        matches both ``/`` and ``\\``, which works on all platforms.
+        """
+        bundle = self._find_bundle()
+        if bundle is None:
+            return
+        try:
+            content = bundle.read_text(encoding="utf-8")
+            if self._BUG_PATTERN not in content:
+                return  # already patched or different version
+            patched = content.replace(self._BUG_PATTERN, self._BUG_FIX)
+            bundle.write_text(patched, encoding="utf-8")
+            logger.info("Patched scip-python Windows bug in %s", bundle)
+        except Exception as e:
+            logger.warning("Failed to patch scip-python: %s", e)
+
+    @staticmethod
+    def _find_bundle() -> Path | None:
+        """Locate the scip-python JS bundle in npm global modules."""
+        import os
+        import sys
+
+        pkg_rel = Path("@sourcegraph") / "scip-python" / "dist" / "scip-python.js"
+        candidates: list[Path] = []
+
+        # Windows: %APPDATA%/npm/node_modules (standard npm global location)
+        if sys.platform == "win32":
+            appdata = os.environ.get("APPDATA")
+            if appdata:
+                candidates.append(Path(appdata) / "npm" / "node_modules" / pkg_rel)
+
+        # npx sibling paths
+        npx_path = shutil.which("npx")
+        if npx_path:
+            npx_dir = Path(npx_path).resolve().parent
+            candidates.extend([
+                npx_dir / "node_modules" / pkg_rel,
+                npx_dir.parent / "lib" / "node_modules" / pkg_rel,
+                npx_dir.parent / "node_modules" / pkg_rel,
+            ])
+
+        for c in candidates:
+            if c.exists():
+                return c
+
+        # Fallback: ask npm prefix
+        try:
+            result = subprocess.run(
+                ["npm", "prefix", "-g"], capture_output=True, text=True, timeout=10,
+                shell=_SHELL,
+            )
+            if result.returncode == 0:
+                prefix = Path(result.stdout.strip())
+                for sub in ["node_modules", Path("lib") / "node_modules"]:
+                    bundle = prefix / sub / pkg_rel
+                    if bundle.exists():
+                        return bundle
+        except Exception:
+            pass
+        return None
 
 
 class JavaIndexer:
@@ -198,6 +266,7 @@ class JavaIndexer:
                     subprocess.run(
                         ["npm", "install", "-g", "coursier"],
                         capture_output=True, text=True, timeout=120,
+                        shell=_SHELL,
                     )
                 else:
                     subprocess.run(

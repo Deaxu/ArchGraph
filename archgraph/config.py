@@ -15,6 +15,7 @@ LANGUAGE_MODULES: dict[str, str] = {
     "go": "tree_sitter_go",
     "javascript": "tree_sitter_javascript",
     "typescript": "tree_sitter_typescript",
+    "python": "tree_sitter_python",
     # Optional (extras)
     "kotlin": "tree_sitter_kotlin",
     "swift": "tree_sitter_swift",
@@ -43,6 +44,8 @@ EXTENSION_MAP: dict[str, str] = {
     ".jsx": "javascript",
     ".ts": "typescript",
     ".tsx": "typescript",
+    ".py": "python",
+    ".pyi": "python",
     ".m": "objc",
     ".mm": "objc",
 }

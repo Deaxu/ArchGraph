@@ -27,6 +27,7 @@ dependencies = [
     "tree-sitter-go>=0.23.0",
     "tree-sitter-javascript>=0.23.0",
     "tree-sitter-typescript>=0.23.0",
+    "tree-sitter-python>=0.23.0",
     "neo4j>=5.0.0",
     "click>=8.1.0",
     "toml>=0.10.0",

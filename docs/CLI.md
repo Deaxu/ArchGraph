@@ -339,7 +339,7 @@ All Neo4j options can be set via environment variables:
 | Go | `.go` | `scip-go` (auto) | tree-sitter deep |
 | Java | `.java` | `scip-java` (auto) | tree-sitter deep |
 | Kotlin | `.kt`, `.kts` | `scip-java` (auto) | tree-sitter deep (optional) |
-| Python | `.py` | `@sourcegraph/scip-python` | — |
+| Python | `.py`, `.pyi` | `@sourcegraph/scip-python` (auto) | — |
 | C | `.c`, `.h` | — (heuristic fallback) | libclang (CFG, data flow, taint) |
 | C++ | `.cpp`, `.cxx`, `.cc`, `.hpp`, `.hxx`, `.hh` | — (heuristic fallback) | libclang |
 | Swift | `.swift` | — | tree-sitter deep (optional) |
@@ -347,3 +347,13 @@ All Neo4j options can be set via environment variables:
 
 SCIP indexers are installed automatically on first extraction. They use each language's
 own compiler/type-checker for ~82% call resolution accuracy vs ~43% heuristic.
+
+### Prerequisites per Language
+
+| SCIP Indexer | Requires |
+|-------------|----------|
+| `@sourcegraph/scip-typescript` | Node.js + npm |
+| `@sourcegraph/scip-python` | Node.js + npm (auto-patched on Windows) |
+| `rust-analyzer` | Rust toolchain (rustup) |
+| `scip-go` | Go toolchain |
+| `scip-java` | Java + coursier |
