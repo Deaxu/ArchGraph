@@ -96,6 +96,39 @@ archgraph query "MATCH (d:Dependency)-[:AFFECTED_BY]->(v:Vulnerability) RETURN d
 
 ---
 
+### `search`
+
+Search for symbols by name, type, or file pattern. No Cypher needed.
+
+```bash
+archgraph search [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-n, --name` | — | Symbol name (supports `*` wildcards) |
+| `-t, --type` | — | Filter: function, class, struct, interface, enum, module, file |
+| `-f, --file-pattern` | — | File path pattern (supports `*` wildcards) |
+| `-l, --limit` | `20` | Max results |
+| `--neo4j-uri` | `bolt://localhost:7687` | Neo4j bolt URI |
+
+**Examples:**
+
+```bash
+# Find all functions named "main"
+archgraph search -n main -t function
+
+# Find classes matching a pattern
+archgraph search -n "*Handler" -t class
+
+# Find all symbols in auth files
+archgraph search -f "*auth*"
+```
+
+---
+
 ### `stats`
 
 Show graph database statistics.

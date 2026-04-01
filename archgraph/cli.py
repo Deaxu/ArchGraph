@@ -322,6 +322,53 @@ def query(
 
 
 @main.command()
+@click.option("--name", "-n", default="", help="Symbol name (supports * wildcards)")
+@click.option("--type", "-t", "sym_type", default="",
+              help="Filter by type: function, class, struct, interface, enum, module, file")
+@click.option("--file-pattern", "-f", default="", help="File path pattern (supports * wildcards)")
+@click.option("--limit", "-l", type=int, default=20, help="Max results")
+@click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
+@click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
+@click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
+def search(
+    name: str, sym_type: str, file_pattern: str, limit: int,
+    neo4j_uri: str, neo4j_user: str, neo4j_password: str, neo4j_database: str,
+) -> None:
+    """Search for symbols by name, type, or file pattern."""
+    _setup_logging(False)
+    if not name and not sym_type and not file_pattern:
+        console.print("[red]At least one of --name, --type, or --file-pattern is required.[/red]")
+        raise SystemExit(1)
+    try:
+        from archgraph.api import ArchGraph
+        ag = ArchGraph(neo4j_uri, neo4j_user, neo4j_password, neo4j_database)
+        results = ag.search(name=name, type=sym_type, file_pattern=file_pattern, limit=limit)
+        ag.close()
+        if not results:
+            console.print("[yellow]No results.[/yellow]")
+            return
+        table = Table()
+        table.add_column("ID", style="cyan")
+        table.add_column("Name", style="green")
+        table.add_column("Type")
+        table.add_column("File", style="dim")
+        table.add_column("Line", justify="right")
+        for r in results:
+            labels = r.get("labels", [])
+            label = [l for l in labels if l != "_Node"][0] if labels else ""
+            table.add_row(
+                r.get("id", ""), r.get("name", ""), label,
+                r.get("file", ""), str(r.get("line", "")),
+            )
+        console.print(table)
+        console.print(f"\n{len(results)} result(s)")
+    except Exception as e:
+        console.print(f"[red]Search failed: {e}[/red]")
+        sys.exit(1)
+
+
+@main.command()
 @click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
 @click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
 @click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")

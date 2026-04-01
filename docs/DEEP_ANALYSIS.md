@@ -2,6 +2,8 @@
 
 ArchGraph provides intra-procedural deep analysis for 7 languages across two engines.
 
+> **Note:** Python and TypeScript/JavaScript use SCIP compiler-backed resolution for cross-file call accuracy (~82%) instead of deep analysis. Deep analysis focuses on CFG, data flow, and taint tracking for languages where these are most relevant.
+
 ## C/C++ via libclang
 
 Requires `pip install -e ".[clang]"` (libclang 18.1+).

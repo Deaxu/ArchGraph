@@ -2,6 +2,12 @@
 
 ArchGraph provides automated security labeling, taint tracking, CVE enrichment, and AI agent integration for security auditing.
 
+## Supported Languages
+
+Security analysis works across all 11 supported languages: C, C++, Rust, Java, Kotlin, Go, TypeScript, JavaScript, Python, Swift, Objective-C.
+
+SCIP-backed call resolution (TS/JS, Python, Rust, Go, Java/Kotlin) provides ~82% accuracy for tracking call chains between security-critical functions. C/C++ uses heuristic resolution with libclang deep analysis for taint tracking.
+
 ## Automatic Security Labels
 
 Functions are automatically labeled based on name matching against curated pattern sets defined in `config.py`:
@@ -82,6 +88,8 @@ When enabled (`--include-cve`), ArchGraph queries the [OSV API](https://osv.dev)
 | package.json | npm |
 | go.mod | Go |
 | build.gradle | Maven |
+| requirements.txt | PyPI |
+| setup.py / pyproject.toml | PyPI |
 | Podfile | CocoaPods |
 | conanfile.txt | ConanCenter |
 | Package.swift | SwiftURL |
@@ -95,6 +103,18 @@ When enabled (`--include-cve`), ArchGraph queries the [OSV API](https://osv.dev)
 | `severity` | CVSS score or severity string |
 | `aliases` | Comma-separated list of aliases (e.g., CVE, GHSA cross-references) |
 
+## Source Code Review
+
+With body storage enabled (default), function and class source code is stored in graph nodes. Use the `source` tool or CLI to review security-critical code:
+
+```bash
+# Search for dangerous sinks
+archgraph search --name "exec*" --type function
+
+# Get source code via MCP/API
+source({symbol_id: "func:src/api.py:execute_query:42"})
+```
+
 ## Impact Analysis
 
 Use the `impact` command to understand blast radius before making changes:
@@ -107,9 +127,11 @@ archgraph impact "func:src/auth.c:validate:42" --direction upstream
 archgraph impact "func:src/net.c:recv_data:10" --direction both --depth 8
 ```
 
-Or via MCP for AI agents:
-```
-Agent tool call: impact({symbol_id: "func:src/api.c:handle:42", direction: "both"})
+Or via MCP/Python API for AI agents:
+```python
+ag.impact("func:src/api.c:handle:42", direction="both", max_depth=5)
+ag.find_vulnerabilities(severity="CRITICAL")
+ag.detect_changes(["src/auth.py", "src/api.py"])
 ```
 
 ## Example Queries
