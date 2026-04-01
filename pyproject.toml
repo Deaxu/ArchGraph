@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "archgraph"
-version = "0.2.0"
+version = "0.3.0"
 description = "Security-first code intelligence for AI agents — taint analysis, CVE detection, MCP integration"
 readme = "README.md"
 license = "MIT"
@@ -39,11 +39,12 @@ dependencies = [
     "fastapi>=0.110.0",
     "uvicorn>=0.29.0",
     "jinja2>=3.1.0",
+    "protobuf>=5.0.0",
 ]
 
 [project.optional-dependencies]
 kotlin = ["tree-sitter-kotlin>=0.23.0"]
-swift = ["tree-sitter-swift>=0.6.0"]
+swift = ["tree-sitter-swift>=0.0.1"]
 objc = ["tree-sitter-objc>=3.0.0"]
 clang = ["libclang>=18.1.0"]
 all = ["archgraph[kotlin,swift,objc,clang]"]
@@ -55,6 +56,23 @@ dev = [
 
 [project.scripts]
 archgraph = "archgraph.cli:main"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+    ".venv*",
+    ".archgraph",
+    ".claude",
+    ".github",
+    "dist",
+    "grammars",
+    "SCRATCHPAD.md",
+    "/scip.proto",
+    "/scip_pb2.py",
+    "rlm-perspectives.md",
+    "rlm_insights.md",
+    "tools.md",
+    "__pycache__",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["archgraph"]

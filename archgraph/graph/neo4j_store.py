@@ -126,9 +126,16 @@ class Neo4jStore:
             logger.info("Created %d indexes", len(_INDEXES))
 
     def clear(self) -> None:
-        """Delete all nodes and relationships. Use with caution."""
+        """Delete all nodes and relationships in batches. Use with caution."""
         with self._session() as session:
-            session.run("MATCH (n) DETACH DELETE n")
+            while True:
+                result = session.run(
+                    "MATCH (n) WITH n LIMIT 10000 DETACH DELETE n RETURN count(*) AS deleted"
+                )
+                deleted = result.single()["deleted"]
+                if deleted == 0:
+                    break
+                logger.debug("Deleted batch of %d nodes", deleted)
             logger.info("Cleared all graph data")
 
     def import_graph(self, graph: GraphData) -> dict[str, int]:

@@ -9,7 +9,7 @@ build/
 .eggs/
 
 # Virtual environments
-.venv/
+.venv*/
 venv/
 ENV/
 
@@ -46,3 +46,14 @@ tools.md
 # Accidental pip output
 =18.1.0
 .bg-shell/
+
+# Local scratch / dev files
+.env
+SCRATCHPAD.md
+
+# SCIP protobuf (root copies — the real one is in archgraph/extractors/)
+/scip.proto
+/scip_pb2.py
+
+# Windows path corruption artifacts
+C\:Users*
