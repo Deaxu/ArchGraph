@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
+from pathlib import Path
 from typing import Any
 
 from archgraph.graph.neo4j_store import Neo4jStore
@@ -137,6 +139,105 @@ TOOLS = [
             "required": ["symbol_id"],
         },
     },
+    {
+        "name": "extract",
+        "description": (
+            "Extract code graph from a repository. Accepts a git URL or local path. "
+            "Auto-detects languages, runs SCIP compiler-backed indexers, and imports into Neo4j. "
+            "Use this to add a new codebase for analysis."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {
+                    "type": "string",
+                    "description": "Git URL (https/ssh) or local directory path",
+                },
+                "languages": {
+                    "type": "string",
+                    "description": "Comma-separated languages or 'auto' for detection (default: auto)",
+                },
+                "clear_db": {
+                    "type": "boolean",
+                    "description": "Clear existing graph data before import (default: true)",
+                },
+            },
+            "required": ["repo"],
+        },
+    },
+    {
+        "name": "search",
+        "description": (
+            "Search for symbols (functions, classes, structs, etc.) by name, type, or file pattern. "
+            "No Cypher knowledge needed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Symbol name to search for (supports partial match with *)",
+                },
+                "type": {
+                    "type": "string",
+                    "enum": ["function", "class", "struct", "interface", "enum", "module", "file"],
+                    "description": "Filter by symbol type",
+                },
+                "file_pattern": {
+                    "type": "string",
+                    "description": "Filter by file path pattern (e.g. '*utils*', 'src/auth*')",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
+            },
+        },
+    },
+    {
+        "name": "repos",
+        "description": "List all repositories that have been extracted and indexed",
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "search_calls",
+        "description": (
+            "Search call relationships between functions. Find who calls a function "
+            "or what a function calls. Supports call chain traversal."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "caller": {
+                    "type": "string",
+                    "description": "Caller function name (partial match)",
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Target function name (partial match)",
+                },
+                "file": {
+                    "type": "string",
+                    "description": "Filter by file path (partial match)",
+                },
+                "resolved_only": {
+                    "type": "boolean",
+                    "description": "Only show SCIP-resolved calls (default: false)",
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "description": "Max call chain depth for transitive search (default: 1)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max results (default: 20)",
+                },
+            },
+        },
+    },
 ]
 
 # MCP Resources
@@ -264,6 +365,18 @@ class ArchGraphMCP:
                 else:
                     result = {"error": f"Symbol not found or has no body: {symbol_id}"}
 
+            elif name == "extract":
+                result = await self._handle_extract(arguments)
+
+            elif name == "search":
+                result = self._handle_search(arguments)
+
+            elif name == "repos":
+                result = self._handle_repos()
+
+            elif name == "search_calls":
+                result = self._handle_search_calls(arguments)
+
             else:
                 result = {"error": f"Unknown tool: {name}"}
 
@@ -304,6 +417,245 @@ class ArchGraphMCP:
         except Exception as e:
             logger.exception("Resource read failed: %s", uri)
             return {"error": str(e)}
+
+    # ── New tool handlers ───────────────────────────────────────────────
+
+    async def _handle_extract(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Handle extract tool — clone, detect, SCIP index, import."""
+        import shutil
+        import subprocess
+        import tempfile
+
+        from archgraph.cli import _detect_languages, _is_git_url
+        from archgraph.config import ExtractConfig
+        from archgraph.graph.builder import GraphBuilder
+
+        repo = arguments["repo"]
+        languages_str = arguments.get("languages", "auto")
+        clear_db = arguments.get("clear_db", True)
+
+        cloned_dir: Path | None = None
+        try:
+            # Clone if git URL
+            if _is_git_url(repo):
+                tmp = Path(tempfile.mkdtemp(prefix="archgraph_mcp_"))
+                cloned_dir = tmp / "repo"
+                result = subprocess.run(
+                    ["git", "clone", "--depth", "1", repo, str(cloned_dir)],
+                    capture_output=True, text=True, timeout=120,
+                )
+                if result.returncode != 0:
+                    return {"error": f"git clone failed: {result.stderr[:300]}"}
+                resolved_path = cloned_dir
+            else:
+                resolved_path = Path(repo).resolve()
+                if not resolved_path.is_dir():
+                    return {"error": f"Not a directory: {repo}"}
+
+            # Detect languages
+            if languages_str == "auto":
+                langs = _detect_languages(resolved_path)
+            else:
+                langs = [l.strip() for l in languages_str.split(",")]
+
+            # Build config
+            config = ExtractConfig(
+                repo_path=resolved_path,
+                languages=langs,
+                neo4j_uri=self._store._uri,
+                neo4j_user=self._store._user,
+                neo4j_password=self._store._password,
+                neo4j_database=self._store._database,
+                include_body=True,
+            )
+
+            # Extract
+            start = time.time()
+            builder = GraphBuilder(config)
+            graph = builder.build()
+            build_time = time.time() - start
+
+            # Clear and import
+            if clear_db:
+                self._store.clear()
+            self._store.create_indexes()
+            import_start = time.time()
+            import_result = self._store.import_graph(graph)
+            import_time = time.time() - import_start
+
+            # Register in registry
+            try:
+                from archgraph.registry import get_registry
+                get_registry().register(
+                    resolved_path,
+                    neo4j_uri=self._store._uri,
+                    neo4j_database=self._store._database,
+                    languages=langs,
+                    stats={"node_count": graph.node_count, "edge_count": graph.edge_count},
+                )
+            except Exception:
+                pass
+
+            stats = graph.stats()
+            resolved_calls = sum(
+                1 for e in graph.edges
+                if e.type == "CALLS" and e.properties.get("resolved")
+            )
+
+            return {
+                "status": "success",
+                "repo": str(resolved_path),
+                "languages": langs,
+                "nodes": graph.node_count,
+                "edges": graph.edge_count,
+                "resolved_calls": resolved_calls,
+                "node_types": stats["nodes"],
+                "edge_types": stats["edges"],
+                "extraction_time": f"{build_time:.1f}s",
+                "import_time": f"{import_time:.1f}s",
+                "nodes_imported": import_result["nodes_imported"],
+                "edges_imported": import_result["edges_imported"],
+            }
+        except Exception as e:
+            logger.exception("Extract failed")
+            return {"error": str(e)}
+        finally:
+            if cloned_dir and cloned_dir.parent.exists():
+                shutil.rmtree(cloned_dir.parent, ignore_errors=True)
+
+    def _handle_search(self, arguments: dict[str, Any]) -> list[dict[str, Any]]:
+        """Handle search tool — find symbols by name, type, file pattern."""
+        name = arguments.get("name", "")
+        sym_type = arguments.get("type", "")
+        file_pattern = arguments.get("file_pattern", "")
+        limit = arguments.get("limit", 20)
+
+        # Map user-friendly type to NodeLabel
+        type_map = {
+            "function": "Function", "class": "Class", "struct": "Struct",
+            "interface": "Interface", "enum": "Enum", "module": "Module", "file": "File",
+        }
+
+        conditions = ["n._id IS NOT NULL"]
+        params: dict[str, Any] = {}
+
+        if sym_type:
+            label = type_map.get(sym_type.lower(), sym_type)
+            # Use label in MATCH clause
+            cypher_label = f":{label}"
+        else:
+            cypher_label = ":_Node"
+
+        if name:
+            if "*" in name:
+                # Wildcard → regex
+                regex = name.replace("*", ".*")
+                conditions.append("n.name =~ $name_regex")
+                params["name_regex"] = f"(?i){regex}"
+            else:
+                conditions.append("toLower(n.name) CONTAINS toLower($name)")
+                params["name"] = name
+
+        if file_pattern:
+            if "*" in file_pattern:
+                regex = file_pattern.replace("*", ".*")
+                conditions.append("n.file =~ $file_regex")
+                params["file_regex"] = f"(?i){regex}"
+            else:
+                conditions.append("toLower(n.file) CONTAINS toLower($file_pat)")
+                params["file_pat"] = file_pattern
+
+        where = " AND ".join(conditions)
+        cypher = (
+            f"MATCH (n{cypher_label}) WHERE {where} "
+            f"RETURN n._id AS id, n.name AS name, labels(n) AS labels, "
+            f"n.file AS file, n.line_start AS line "
+            f"ORDER BY n.file, n.name LIMIT $limit"
+        )
+        params["limit"] = limit
+        return self._store.query(cypher, params)
+
+    def _handle_repos(self) -> list[dict[str, Any]]:
+        """Handle repos tool — list extracted repositories."""
+        try:
+            from archgraph.registry import get_registry
+            registry = get_registry()
+            entries = registry.list_repos()
+            return [e.to_dict() for e in entries]
+        except Exception:
+            # Fallback: get info from Neo4j
+            files = self._store.query(
+                "MATCH (f:File) RETURN DISTINCT "
+                "split(f.path, '/')[0] AS root, count(f) AS file_count "
+                "ORDER BY file_count DESC LIMIT 10"
+            )
+            return files
+
+    def _handle_search_calls(self, arguments: dict[str, Any]) -> list[dict[str, Any]]:
+        """Handle search_calls tool — find call relationships."""
+        caller = arguments.get("caller", "")
+        target = arguments.get("target", "")
+        file = arguments.get("file", "")
+        resolved_only = arguments.get("resolved_only", False)
+        max_depth = arguments.get("max_depth", 1)
+        limit = arguments.get("limit", 20)
+
+        if max_depth > 1:
+            # Transitive call chain
+            conditions = []
+            params: dict[str, Any] = {"limit": limit, "depth": max_depth}
+
+            path_filter = "ALL(r IN relationships(path) WHERE r.resolved = true)" if resolved_only else "true"
+
+            if caller and target:
+                conditions.append("toLower(src.name) CONTAINS toLower($caller)")
+                conditions.append("toLower(dst.name) CONTAINS toLower($target)")
+                params["caller"] = caller
+                params["target"] = target
+            elif caller:
+                conditions.append("toLower(src.name) CONTAINS toLower($caller)")
+                params["caller"] = caller
+            elif target:
+                conditions.append("toLower(dst.name) CONTAINS toLower($target)")
+                params["target"] = target
+
+            where = " AND ".join(conditions) if conditions else "true"
+            cypher = (
+                f"MATCH path = (src:Function)-[:CALLS*1..$depth]->(dst:Function) "
+                f"WHERE {where} AND {path_filter} "
+                f"RETURN src.name AS caller, src.file AS caller_file, "
+                f"dst.name AS target, dst.file AS target_file, "
+                f"length(path) AS depth "
+                f"ORDER BY depth LIMIT $limit"
+            )
+            return self._store.query(cypher, params)
+
+        # Direct calls (depth=1)
+        conditions = []
+        params = {"limit": limit}
+
+        if caller:
+            conditions.append("toLower(f.name) CONTAINS toLower($caller)")
+            params["caller"] = caller
+        if target:
+            conditions.append("toLower(t.name) CONTAINS toLower($target)")
+            params["target"] = target
+        if file:
+            conditions.append("(toLower(f.file) CONTAINS toLower($file) OR toLower(t.file) CONTAINS toLower($file))")
+            params["file"] = file
+        if resolved_only:
+            conditions.append("c.resolved = true")
+
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        cypher = (
+            f"MATCH (f:Function)-[c:CALLS]->(t:Function)"
+            f"{where} "
+            f"RETURN f.name AS caller, f.file AS caller_file, "
+            f"t.name AS target, t.file AS target_file, "
+            f"c.resolved AS resolved, c.source AS source "
+            f"ORDER BY f.file, f.name LIMIT $limit"
+        )
+        return self._store.query(cypher, params)
 
     def _get_context(self, symbol_id: str) -> dict[str, Any]:
         """Get 360-degree context of a symbol."""
