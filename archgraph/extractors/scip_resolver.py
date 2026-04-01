@@ -289,12 +289,19 @@ def _convert_bash_to_cmd(bin_dir: Path) -> None:
                 )
 
         if not java_cmd or not javac_cmd:
-            # Fallback: try to call via bash
+            # Fallback: call the original bash script via bash/Git Bash
             bash = shutil.which("bash")
             if bash:
                 backup = bash_script.with_suffix(".bash")
                 bash_script.rename(backup)
-                bash_script.write_text(f'@echo off\n"{bash}" "{backup}" %*\n')
+                body = f'@echo off\n"{bash}" "{backup}" %*\n'
+                bash_script.write_text(body)
+                bash_script.with_suffix(".cmd").write_text(body)
+            else:
+                logger.warning(
+                    "Cannot convert scip-java %s script: no bash found "
+                    "and script format unrecognized", name,
+                )
             continue
 
         batch = f"""@echo off

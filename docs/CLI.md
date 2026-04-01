@@ -383,10 +383,13 @@ own compiler/type-checker for ~82% call resolution accuracy vs ~43% heuristic.
 
 ### Prerequisites per Language
 
-| SCIP Indexer | Requires |
-|-------------|----------|
-| `@sourcegraph/scip-typescript` | Node.js + npm |
-| `@sourcegraph/scip-python` | Node.js + npm (auto-patched on Windows) |
-| `rust-analyzer` | Rust toolchain (rustup) |
-| `scip-go` | Go toolchain |
-| `scip-java` | Java + coursier |
+| SCIP Indexer | User Must Have | Auto-Installed by ArchGraph |
+|-------------|---------------|----------------------------|
+| `@sourcegraph/scip-typescript` | Node.js + npm | scip-typescript npm package |
+| `@sourcegraph/scip-python` | Node.js + npm | scip-python npm package (auto-patched on Windows) |
+| `rust-analyzer` | Rust toolchain (rustup) | rust-analyzer component |
+| `scip-go` | Go toolchain | scip-go binary |
+| `scip-java` | Java (JDK) | coursier + Maven (to `~/.archgraph/tools/`) |
+
+**Note:** For Java/Kotlin on Windows, Go is also needed to compile the Maven exe shim.
+ArchGraph auto-downloads coursier and Maven to `~/.archgraph/tools/` — no global install needed.

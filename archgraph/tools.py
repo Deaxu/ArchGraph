@@ -124,15 +124,85 @@ def ensure_maven() -> Path | None:
             zf.extractall(TOOLS_DIR)
         if sys.platform != "win32":
             mvn.chmod(0o755)
-            # Also make the mvn wrapper executable
             sh_mvn = maven_home / "bin" / "mvn"
             if sh_mvn.exists():
                 sh_mvn.chmod(0o755)
+        else:
+            _create_mvn_exe_shim(maven_home / "bin")
         logger.info("Maven installed: %s", mvn)
         return mvn
     except Exception as e:
         logger.warning("Failed to download Maven: %s", e)
         return None
+
+
+_MVN_SHIM_GO = """\
+package main
+
+import (
+\t"os"
+\t"os/exec"
+\t"path/filepath"
+)
+
+func main() {
+\texe, _ := os.Executable()
+\tdir := filepath.Dir(exe)
+\targs := append([]string{"/c", filepath.Join(dir, "mvn.cmd")}, os.Args[1:]...)
+\tcmd := exec.Command("cmd", args...)
+\tcmd.Stdin = os.Stdin
+\tcmd.Stdout = os.Stdout
+\tcmd.Stderr = os.Stderr
+\tif err := cmd.Run(); err != nil {
+\t\tif e, ok := err.(*exec.ExitError); ok {
+\t\t\tos.Exit(e.ExitCode())
+\t\t}
+\t\tos.Exit(1)
+\t}
+}
+"""
+
+
+def _create_mvn_exe_shim(bin_dir: Path) -> bool:
+    """Create ``mvn.exe`` in *bin_dir* so Java ProcessBuilder can find Maven.
+
+    Windows ``CreateProcess`` only finds ``.exe`` files — not ``.cmd`` or ``.bat``.
+    We compile a tiny Go shim that delegates to ``mvn.cmd``.  If Go is not
+    available, we skip silently (Maven may still work if the user has it
+    globally installed as an ``.exe``).
+    """
+    mvn_exe = bin_dir / "mvn.exe"
+    if mvn_exe.exists():
+        return True
+
+    go = shutil.which("go")
+    if not go:
+        logger.info(
+            "Go not found — skipping mvn.exe shim. "
+            "Java SCIP indexer requires Maven to be globally installed or Go to compile the shim."
+        )
+        return False
+
+    import tempfile
+    src_dir = Path(tempfile.mkdtemp(prefix="archgraph-mvn-shim-"))
+    src_file = src_dir / "main.go"
+    try:
+        src_file.write_text(_MVN_SHIM_GO)
+        result = subprocess.run(
+            [go, "build", "-ldflags=-s -w", "-o", str(mvn_exe), str(src_file)],
+            capture_output=True, text=True, timeout=60,
+            env={**os.environ, "GOOS": "windows", "GOARCH": "amd64"},
+        )
+        if result.returncode == 0 and mvn_exe.exists():
+            logger.info("Created mvn.exe shim: %s", mvn_exe)
+            return True
+        logger.warning("Failed to compile mvn.exe shim: %s", result.stderr[:200])
+        return False
+    except Exception as e:
+        logger.warning("Failed to create mvn.exe shim: %s", e)
+        return False
+    finally:
+        shutil.rmtree(src_dir, ignore_errors=True)
 
 
 # ── Environment helper ──────────────────────────────────────────────────────
