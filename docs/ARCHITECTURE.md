@@ -53,7 +53,7 @@ The `GraphBuilder` orchestrates 11 extraction steps. It supports two modes:
 ```
 Group A (concurrent):  Step 1 (tree-sitter) | Step 2 (git) | Step 3 (deps) | Step 4 (annotations)
                                     ↓
-Step 4.5:              Call resolution (resolves funcref: → func: definitions)
+Step 4.5:              Call resolution (SCIP compiler-backed + heuristic fallback)
                                     ↓
 Step 5:                Security labeling (needs merged Function nodes)
                                     ↓
@@ -70,18 +70,30 @@ Step 11:               Process tracing (execution flows from entry points)
 
 ### Call Resolution (Step 4.5)
 
-After all structural extraction (tree-sitter, git, deps, annotations) is merged,
-the `CallResolver` resolves unresolved `funcref:` call targets to actual function
-definitions using a 4-level fallback chain:
+After all structural extraction is merged, call resolution runs in two stages:
 
-1. **Qualifier match** — `funcref:Counter.increment` resolves via Class CONTAINS Function
-2. **Intra-file match** — caller and callee in the same file, line proximity tiebreak
-3. **Import match** — follow named imports to the source file's function definitions
-4. **Global unique** — if only one function with that name exists in the repo
+**Stage 1 — SCIP (compiler-backed):** For languages with SCIP indexers (currently
+TypeScript/JavaScript), the indexer is auto-installed and run. SCIP uses the
+language's own compiler/type-checker to produce cross-reference data, achieving
+~82% resolution accuracy. Old `funcref:` nodes for SCIP-covered languages are
+removed and replaced with compiler-verified CALLS edges (`source: "scip"`).
 
-Resolved edges get `resolved: true` property. Unresolved calls (external/stdlib)
-remain as `funcref:` nodes. CALLS edges also carry a `qualifier` property when
-the call had a receiver (e.g., `Counter` for `Counter.increment()`).
+**Stage 2 — Heuristic fallback:** For languages without SCIP support (C, C++, Rust,
+Java, Go, etc.), the `CallResolver` runs its 4-level fallback chain:
+qualifier match, intra-file, import-based, global unique (~43% accuracy).
+
+SCIP indexers are installed automatically via the language's package manager.
+Adding a new language requires implementing the `ScipIndexer` protocol
+(install + index methods) and adding it to `INDEXER_REGISTRY`.
+
+| Language | Indexer | Status |
+|----------|---------|--------|
+| TypeScript/JavaScript | `@sourcegraph/scip-typescript` | Active |
+| Python | `scip-python` | TODO |
+| Java/Kotlin | `scip-java` | TODO |
+| Rust | `rust-analyzer` | TODO |
+| Go | `scip-go` | TODO |
+| C/C++ | `scip-clang` | TODO |
 
 ### Incremental Extraction
 
