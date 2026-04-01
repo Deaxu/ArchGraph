@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -243,47 +244,129 @@ class PythonIndexer:
         return None
 
 
+def _convert_bash_to_cmd(bin_dir: Path) -> None:
+    """Convert scip-java's bash wrapper scripts to Windows .cmd batch files.
+
+    scip-java creates ``javac`` and ``java`` as bash scripts.  On Windows,
+    Maven's forked compiler calls them via full path — which fails because
+    Windows ``CreateProcess`` can't execute bash scripts.
+
+    We parse the bash script to extract the ``java -D...`` command and the
+    ``javac ...`` command, then write an equivalent ``.cmd`` batch file.
+    """
+    for name in ("javac", "java"):
+        bash_script = bin_dir / name
+        if not bash_script.exists() or bash_script.suffix:
+            continue
+        try:
+            content = bash_script.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if not content.startswith("#!/"):
+            continue  # already converted
+
+        # Extract java -D... command and javac command from the bash script.
+        # The script structure is:
+        #   java -Dsemanticdb.xxx=... com.sourcegraph.semanticdb_javac.InjectSemanticdbOptions "$@"
+        #   javac -J--add-exports ... "@$NEW_JAVAC_OPTS"
+        lines = content.split("\n")
+        java_cmd = ""
+        javac_cmd = ""
+        opts_var = ""
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("NEW_JAVAC_OPTS="):
+                # NEW_JAVAC_OPTS="...path...-$RANDOM"
+                val = stripped.split("=", 1)[1].strip('"')
+                # Replace $RANDOM with %RANDOM%
+                val = val.replace("$RANDOM", "%RANDOM%")
+                opts_var = val
+            elif stripped.startswith("java ") and "InjectSemanticdbOptions" in stripped:
+                java_cmd = stripped.replace('"$@"', "%*").replace("$NEW_JAVAC_OPTS", "%OPTS%")
+            elif stripped.startswith("javac ") and "@$NEW_JAVAC_OPTS" in stripped:
+                javac_cmd = stripped.replace('"${LAUNCHER_ARGS[@]}"', "").replace(
+                    "@$NEW_JAVAC_OPTS", '"@%OPTS%"'
+                )
+
+        if not java_cmd or not javac_cmd:
+            # Fallback: try to call via bash
+            bash = shutil.which("bash")
+            if bash:
+                backup = bash_script.with_suffix(".bash")
+                bash_script.rename(backup)
+                bash_script.write_text(f'@echo off\n"{bash}" "{backup}" %*\n')
+            continue
+
+        batch = f"""@echo off
+setlocal enabledelayedexpansion
+set "OPTS={opts_var}"
+{java_cmd}
+{javac_cmd}
+endlocal
+"""
+        # Replace the bash script with the .cmd content
+        bash_script.rename(bash_script.with_suffix(".bash"))
+        bash_script.write_text(batch)
+        bash_script.with_suffix(".cmd").write_text(batch)
+
+    # Also handle the 'java' wrapper (simpler: just passthrough)
+    java_script = bin_dir / "java"
+    if java_script.exists():
+        try:
+            content = java_script.read_text(encoding="utf-8")
+            if content.startswith("#!/"):
+                java_script.rename(java_script.with_suffix(".bash"))
+                java_script.write_text('@echo off\njava %*\n')
+                java_script.with_suffix(".cmd").write_text('@echo off\njava %*\n')
+        except Exception:
+            pass
+
+
 class JavaIndexer:
-    """SCIP indexer for Java/Kotlin using scip-java (via coursier launcher)."""
+    """SCIP indexer for Java/Kotlin using scip-java (via coursier).
+
+    Dependencies are managed automatically:
+    - coursier: downloaded to ``~/.archgraph/tools/bin/`` if not globally available
+    - Maven: downloaded to ``~/.archgraph/tools/apache-maven-*/`` if not globally available
+    - scip-java: launched via ``cs launch`` (no permanent install needed)
+
+    Requires: Java (JDK) must be pre-installed.
+    """
 
     language = "java"
-    _COURSIER_URL = "https://github.com/coursier/launchers/raw/master/cs-x86_64-pc-win32.zip"
+
+    # Maven coordinates for scip-java
+    _SCIP_JAVA_COORD = "com.sourcegraph:scip-java_2.13:latest.release"
 
     def install(self, repo_path: Path) -> bool:
         if not shutil.which("java"):
-            logger.warning("java not found — cannot run scip-java")
+            logger.warning("java (JDK) not found — required for scip-java")
             return False
-        if self._is_available():
-            return True
 
-        # scip-java is distributed via coursier. Install coursier first.
-        if not shutil.which("cs") and not shutil.which("coursier"):
-            logger.info("Installing coursier for scip-java...")
-            try:
-                import platform
-                if platform.system() == "Windows":
-                    # Use npm to install coursier
-                    subprocess.run(
-                        ["npm", "install", "-g", "coursier"],
-                        capture_output=True, text=True, timeout=120,
-                        shell=_SHELL,
-                    )
-                else:
-                    subprocess.run(
-                        ["curl", "-fL", "https://get-coursier.io/coursier", "|", "sh"],
-                        capture_output=True, text=True, timeout=120, shell=True,
-                    )
-            except Exception as e:
-                logger.warning("Failed to install coursier: %s", e)
+        from archgraph.tools import ensure_coursier, ensure_maven
 
-        # Install scip-java via coursier
-        cs = shutil.which("cs") or shutil.which("coursier")
-        if cs:
-            logger.info("Installing scip-java via coursier...")
-            subprocess.run(
-                [cs, "install", "scip-java"],
-                capture_output=True, text=True, timeout=120,
-            )
+        # Ensure coursier is available (downloads if needed)
+        cs = ensure_coursier()
+        if cs is None:
+            logger.warning("Could not obtain coursier — scip-java unavailable")
+            return False
+
+        # Ensure Maven is available (downloads if needed)
+        mvn = ensure_maven()
+        if mvn is None:
+            # Check for Gradle as alternative
+            if not shutil.which("gradle"):
+                has_wrapper = (
+                    (repo_path / "gradlew").exists()
+                    or (repo_path / "gradlew.bat").exists()
+                )
+                if not has_wrapper:
+                    logger.warning(
+                        "Neither Maven nor Gradle found — scip-java requires a build tool"
+                    )
+                    return False
+
+        # Verify scip-java can launch (downloads JARs to coursier cache on first run)
         return self._is_available()
 
     def index(self, repo_path: Path) -> Path | None:
@@ -297,28 +380,97 @@ class JavaIndexer:
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "index.scip"
 
-        cmd = ["scip-java", "index", "--output", str(output_path)]
+        from archgraph.tools import ensure_coursier, tools_env
+
+        cs = ensure_coursier()
+        if cs is None:
+            return None
+
+        cmd = [
+            str(cs), "launch", self._SCIP_JAVA_COORD, "--",
+            "index", "--output", str(output_path),
+        ]
+
+        env = tools_env()
+
+        # On Windows, scip-java creates bash wrapper scripts (javac, java) in a
+        # temp dir. Windows can't execute bash scripts via ProcessBuilder.
+        # Fix: redirect TEMP so we can intercept and add .cmd wrappers.
+        shim_cleanup = None
+        if sys.platform == "win32":
+            shim_cleanup = self._install_javac_shims(env)
 
         logger.info("Running scip-java index...")
         try:
             result = subprocess.run(
                 cmd, cwd=str(repo_path),
                 capture_output=True, text=True, timeout=600,
+                env=env,
             )
         except subprocess.TimeoutExpired:
             logger.warning("scip-java timed out")
             return None
+        finally:
+            if shim_cleanup:
+                shim_cleanup()
 
         if result.returncode != 0:
             logger.warning("scip-java failed: %s", result.stderr[:500])
             return None
         return output_path if output_path.exists() else None
 
+    @staticmethod
+    def _install_javac_shims(env: dict[str, str]) -> callable:
+        """Intercept scip-java's temp dir and replace bash scripts with .cmd batch files.
+
+        scip-java writes ``javac`` and ``java`` as bash scripts to a temp dir.
+        Maven calls them via full path (``-Dmaven.compiler.executable=...javac``),
+        but Windows CreateProcess can't execute bash scripts.
+
+        Fix: monitor the temp dir, and when bash scripts appear, REPLACE them
+        with ``.cmd`` files at the same path (rename original to ``.bash``).
+        Maven on Windows auto-appends ``.cmd`` when the given path doesn't exist.
+        """
+        import tempfile
+        import threading
+        import glob
+
+        temp_base = tempfile.mkdtemp(prefix="archgraph-scip-java-")
+        env["TEMP"] = temp_base
+        env["TMP"] = temp_base
+        stop = threading.Event()
+
+        def _watch() -> None:
+            seen: set[str] = set()
+            while not stop.is_set():
+                for d in glob.glob(os.path.join(temp_base, "scip-java*", "bin")):
+                    if d in seen:
+                        continue
+                    seen.add(d)
+                    _convert_bash_to_cmd(Path(d))
+                stop.wait(0.15)
+
+        t = threading.Thread(target=_watch, daemon=True)
+        t.start()
+
+        def _cleanup() -> None:
+            stop.set()
+            t.join(timeout=2)
+            shutil.rmtree(temp_base, ignore_errors=True)
+
+        return _cleanup
+
     def _is_available(self) -> bool:
+        from archgraph.tools import ensure_coursier, tools_env
+
+        cs = ensure_coursier()
+        if cs is None:
+            return False
         try:
             result = subprocess.run(
-                ["scip-java", "--help"],
-                capture_output=True, timeout=15,
+                [str(cs), "launch", self._SCIP_JAVA_COORD, "--", "version"],
+                capture_output=True, text=True, timeout=60,
+                env=tools_env(),
             )
             return result.returncode == 0
         except (subprocess.TimeoutExpired, FileNotFoundError):
