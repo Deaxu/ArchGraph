@@ -56,7 +56,7 @@ Test dosyaları Neo4j gerektirmez. Tree-sitter ve git testleri `tmp_path` fixtur
 | `archgraph/api.py` | Python API — `ArchGraph` sınıfı, tüm tool'ların programmatik erişimi |
 | `archgraph/extractors/scip_resolver.py` | SCIP compiler-backed call resolution (TS/JS/Rust/Go/Java/Python) |
 | `archgraph/extractors/call_resolver.py` | Heuristic call resolution (SCIP fallback, 4-seviye zincir) |
-| `archgraph/mcp/server.py` | MCP server — 11 tool, 4 resource |
+| `archgraph/mcp/server.py` | MCP server — 12 tool, 4 resource |
 
 ## Dokümantasyon
 

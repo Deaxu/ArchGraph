@@ -8,7 +8,7 @@ archgraph/
 ├── config.py               # Constants, language maps, security patterns, ExtractConfig
 ├── extractors/
 │   ├── base.py             # BaseExtractor ABC
-│   ├── treesitter.py       # Multi-language AST parser (10 languages, thread-safe parallel)
+│   ├── treesitter.py       # Multi-language AST parser (11 languages, thread-safe parallel)
 │   ├── git.py              # Commit history + numstat, author, tags, security fix detection
 │   ├── dependencies.py     # 10 package manager parsers (single os.walk traversal)
 │   ├── annotations.py      # TODO/HACK/UNSAFE/FIXME/BUG/XXX/SECURITY/VULNERABILITY
@@ -28,7 +28,7 @@ archgraph/
 │   ├── clustering.py       # Community detection (greedy modularity)
 │   └── process.py          # Execution flow tracing from entry points
 ├── mcp/
-│   └── server.py           # MCP server — 7 tools, 4 resources, TTL cache
+│   └── server.py           # MCP server — 12 tools, 4 resources, TTL cache
 ├── server/
 │   └── web.py              # FastAPI web dashboard with interactive UI
 ├── tool/
@@ -80,7 +80,7 @@ removed and replaced with compiler-verified CALLS edges (`source: "scip"`).
 
 **Stage 2 — Heuristic fallback:** For languages without SCIP support (C, C++, Swift,
 Objective-C) or when SCIP fails, the `CallResolver` runs its 4-level fallback chain:
-qualifier match, intra-file, import-based, global unique (~43% accuracy).
+qualifier match, intra-file, import-based, global unique.
 
 SCIP indexers are installed automatically via the language's package manager.
 Adding a new language requires implementing the `ScipIndexer` protocol
@@ -89,11 +89,11 @@ Adding a new language requires implementing the `ScipIndexer` protocol
 | Language | Indexer | Status |
 |----------|---------|--------|
 | TypeScript/JavaScript | `@sourcegraph/scip-typescript` | Active |
-| Python | `scip-python` | TODO |
-| Java/Kotlin | `scip-java` | TODO |
-| Rust | `rust-analyzer` | TODO |
-| Go | `scip-go` | TODO |
-| C/C++ | `scip-clang` | TODO |
+| Python | `@sourcegraph/scip-python` | Active |
+| Java/Kotlin | `scip-java` | Active |
+| Rust | `rust-analyzer` | Active |
+| Go | `scip-go` | Active |
+| C/C++ | `scip-clang` | Planned |
 
 ### Incremental Extraction
 

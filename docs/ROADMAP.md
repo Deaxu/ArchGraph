@@ -24,7 +24,7 @@
 
 ## Phase 3: AI Agent Integration ✅ COMPLETE
 
-- [x] **MCP Server** — 11 tools, 4 resources for any MCP-compatible agent
+- [x] **MCP Server** — 12 tools, 4 resources for any MCP-compatible agent
   - [x] `query` / `cypher` — Cypher queries
   - [x] `impact` — Blast radius analysis
   - [x] `context` — 360° symbol view
@@ -82,7 +82,7 @@
 | **Language** | Python | TypeScript | Go | C++/JS |
 | **Graph DB** | Neo4j | KuzuDB | PostgreSQL | Custom |
 | **Languages** | 11 | 13 | 40+ | 10+ |
-| **MCP Server** | ✅ 11 tools | ✅ 7 tools | ❌ | ❌ |
+| **MCP Server** | ✅ 12 tools | ✅ 7 tools | ❌ | ❌ |
 | **SCIP Resolution** | ✅ 7 languages | ❌ | ✅ (internal) | ❌ |
 | **Python API** | ✅ 11 methods | ❌ | ❌ | ❌ |
 | **Body Storage** | ✅ | ❌ | ❌ | ❌ |

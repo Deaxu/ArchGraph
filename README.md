@@ -6,7 +6,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+"/></a>
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Built%20for%20Agents-green.svg" alt="Built for AI Agents via MCP"/></a>
-  <img src="https://img.shields.io/badge/tests-212%20passed-brightgreen.svg" alt="Tests"/>
+  <img src="https://img.shields.io/badge/tests-234%20passed-brightgreen.svg" alt="Tests"/>
 </p>
 
 <p align="center">
@@ -301,15 +301,16 @@ archgraph extract /path/to/repo --clear-db
 
 ## Benchmarks
 
-| Project | Language | Files | Nodes | Edges | SCIP CALLS | Time |
-|---------|----------|-------|-------|-------|------------|------|
-| [zod](https://github.com/colinhacks/zod) | TypeScript | 389 | 6,921 | 12,254 | 4,768 | 63s |
-| [schedule](https://github.com/dbader/schedule) | Python | 4 | 660 | 2,174 | 537 | 39s |
-| [memchr](https://github.com/BurntSushi/memchr) | Rust | 64 | 7,776 | 8,490 | 259 | 53s |
-| [xxhash](https://github.com/cespare/xxhash) | Go | 12 | 275 | 617 | 71 | 11s |
-| [gson](https://github.com/google/gson) | Java | 259 | 11,631 | 35,505 | heuristic | 71s |
+| Project | Language | Files | Nodes | Edges | CALLS | Resolution | Time |
+|---------|----------|-------|-------|-------|-------|------------|------|
+| [zod](https://github.com/colinhacks/zod) | TypeScript | 394 | 6,654 | 11,972 | 4,768 | SCIP 100% | ~20s |
+| [click](https://github.com/pallets/click) | Python | 62 | 1,210 | 2,007 | 567 | SCIP 100% | ~50s |
+| [memchr](https://github.com/BurntSushi/memchr) | Rust | 64 | 7,707 | 8,415 | 259 | SCIP 100% | ~14s |
+| [gocron](https://github.com/go-co-op/gocron) | Go | 21 | 850 | 1,855 | 1,026 | SCIP 100% | ~5s |
+| [gson](https://github.com/google/gson) | Java | 259 | 9,217 | 20,979 | 2,622 | Heuristic | ~15s |
+| [lodash](https://github.com/lodash/lodash) | JavaScript | 27 | 691 | 683 | 19 | SCIP 100% | ~14s |
 
-*Windows 11, Python 3.13, 8 workers. Includes git history, dependencies, and SCIP indexing.*
+*Windows 11, Python 3.13, 8 workers. Extraction only (no git/deps/CVE). Java SCIP falls back to heuristic on multi-module Maven projects.*
 
 ---
 
@@ -335,6 +336,27 @@ docker compose down        # Stops Neo4j
 
 ---
 
+## Comparison
+
+| Feature | **ArchGraph** | **Sourcegraph** | **CodeQL** |
+|---------|---------------|-----------------|------------|
+| **License** | MIT | BSL | Proprietary |
+| **Languages** | 11 | 40+ | 10+ |
+| **Graph DB** | Neo4j (Cypher) | PostgreSQL | Custom |
+| **MCP Server** | 12 tools | -- | -- |
+| **Python API** | 12 methods | -- | -- |
+| **SCIP Resolution** | 6 languages | Internal | -- |
+| **Body Storage** | In-graph | -- | -- |
+| **Taint Analysis** | libclang + tree-sitter | -- | QL queries |
+| **CVE Detection** | OSV API | -- | Advisory DB |
+| **Clustering** | Greedy modularity | -- | -- |
+| **Local-first** | Yes | No (SaaS) | Yes |
+| **Incremental** | Manifest-based | Yes | -- |
+
+**Why ArchGraph?** Security-first design (taint tracking, CVE detection), MIT license, first-class MCP integration for AI agents, Neo4j's full Cypher power, and a Python ecosystem that's easy to extend.
+
+---
+
 ## Documentation
 
 | Document | Description |
@@ -354,7 +376,7 @@ docker compose down        # Stops Neo4j
 git clone https://github.com/Deaxu/ArchGraph.git
 cd ArchGraph
 pip install -e ".[dev,all]"
-pytest tests/ -v               # 212 passed, 22 skipped
+pytest tests/ -v               # 234 passed, 22 skipped
 ```
 
 Tests run without Neo4j -- they use temporary directories with real tree-sitter parsing and git operations.

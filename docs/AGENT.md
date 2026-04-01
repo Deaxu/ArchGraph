@@ -380,7 +380,7 @@ with ArchGraph() as ag:
     repos = ag.repos()
 ```
 
-All 11 tools available: `extract`, `search`, `repos`, `search_calls`, `query`, `source`, `context`, `stats`, `impact`, `detect_changes`, `find_vulnerabilities`.
+All 12 tools available: `extract`, `search`, `repos`, `search_calls`, `query`, `cypher`, `source`, `context`, `stats`, `impact`, `detect_changes`, `find_vulnerabilities`.
 
 ---
 
