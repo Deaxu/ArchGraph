@@ -7,6 +7,7 @@ import logging
 import re
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from archgraph.config import OSV_API_URL, OSV_QUERY_TIMEOUT, SOURCE_TO_OSV_ECOSYSTEM
@@ -15,6 +16,7 @@ from archgraph.graph.schema import EdgeType, GraphData, NodeLabel
 logger = logging.getLogger(__name__)
 
 _VERSION_PREFIX_RE = re.compile(r"^[~^>=<vV!*]+\s*")
+_VULN_API_URL = "https://api.osv.dev/v1/vulns/"
 
 
 def _clean_version(version: str) -> str:
@@ -62,47 +64,59 @@ class CveEnricher:
         if not queries:
             return 0
 
-        vuln_count = 0
-        # Process in batches
+        # Phase 1: Batch query to find which vulns affect our deps
+        vuln_dep_map: dict[str, list[Any]] = {}  # vuln_id -> [dep_nodes]
         for batch_start in range(0, len(queries), self._batch_size):
             batch_queries = queries[batch_start : batch_start + self._batch_size]
             batch_deps = dep_index[batch_start : batch_start + self._batch_size]
 
             try:
-                results = self._query_osv(batch_queries)
+                results = self._query_osv_batch(batch_queries)
             except Exception:
-                logger.warning("OSV API query failed — skipping CVE enrichment", exc_info=True)
-                return vuln_count
+                logger.warning("OSV batch query failed — skipping CVE enrichment", exc_info=True)
+                return 0
 
             for dep_node, result in zip(batch_deps, results):
-                vulns = result.get("vulns", [])
-                for vuln in vulns:
+                for vuln in result.get("vulns", []):
                     vuln_id = vuln.get("id", "")
-                    if not vuln_id:
-                        continue
+                    if vuln_id:
+                        vuln_dep_map.setdefault(vuln_id, []).append(dep_node)
 
-                    # Create Vulnerability node
-                    node_id = f"vuln:{vuln_id}"
-                    severity = self._extract_severity(vuln)
-                    summary = vuln.get("summary", "")[:500]
+        if not vuln_dep_map:
+            logger.info("CVE enrichment: no vulnerabilities found")
+            return 0
 
-                    graph.add_node(
-                        node_id,
-                        NodeLabel.VULNERABILITY,
-                        vuln_id=vuln_id,
-                        summary=summary,
-                        severity=severity,
-                        aliases=",".join(vuln.get("aliases", [])),
-                    )
+        # Phase 2: Fetch full details for each unique vulnerability
+        vuln_details = self._fetch_vuln_details(list(vuln_dep_map.keys()))
 
-                    # AFFECTED_BY edge: Dependency → Vulnerability
-                    graph.add_edge(dep_node.id, node_id, EdgeType.AFFECTED_BY)
-                    vuln_count += 1
+        # Phase 3: Create nodes and edges
+        vuln_count = 0
+        for vuln_id, dep_nodes_list in vuln_dep_map.items():
+            detail = vuln_details.get(vuln_id, {})
+            severity = self._extract_severity(detail)
+            summary = detail.get("summary", "")[:500]
+            aliases = detail.get("aliases", [])
+            db_severity = detail.get("database_specific", {}).get("severity", "")
 
-        logger.info("CVE enrichment: %d vulnerabilities found", vuln_count)
+            node_id = f"vuln:{vuln_id}"
+            graph.add_node(
+                node_id,
+                NodeLabel.VULNERABILITY,
+                vuln_id=vuln_id,
+                summary=summary,
+                severity=severity,
+                severity_label=db_severity,
+                aliases=",".join(aliases),
+            )
+
+            for dep_node in dep_nodes_list:
+                graph.add_edge(dep_node.id, node_id, EdgeType.AFFECTED_BY)
+                vuln_count += 1
+
+        logger.info("CVE enrichment: %d vulnerabilities found across %d edges", len(vuln_dep_map), vuln_count)
         return vuln_count
 
-    def _query_osv(self, queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _query_osv_batch(self, queries: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Send a batch query to OSV API. Returns list of result dicts."""
         payload = json.dumps({"queries": queries}).encode("utf-8")
         req = urllib.request.Request(
@@ -116,6 +130,33 @@ class CveEnricher:
             data = json.loads(resp.read().decode("utf-8"))
 
         return data.get("results", [{}] * len(queries))
+
+    def _fetch_vuln_details(self, vuln_ids: list[str]) -> dict[str, dict[str, Any]]:
+        """Fetch full details for each vulnerability ID in parallel."""
+        details: dict[str, dict[str, Any]] = {}
+
+        def _fetch_one(vuln_id: str) -> tuple[str, dict[str, Any]]:
+            try:
+                req = urllib.request.Request(
+                    f"{_VULN_API_URL}{vuln_id}",
+                    headers={"Accept": "application/json"},
+                    method="GET",
+                )
+                with urllib.request.urlopen(req, timeout=OSV_QUERY_TIMEOUT) as resp:
+                    return vuln_id, json.loads(resp.read().decode("utf-8"))
+            except Exception:
+                logger.debug("Failed to fetch details for %s", vuln_id)
+                return vuln_id, {}
+
+        workers = min(len(vuln_ids), 10)
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = [pool.submit(_fetch_one, vid) for vid in vuln_ids]
+            for f in as_completed(futures):
+                vid, data = f.result()
+                details[vid] = data
+
+        logger.debug("Fetched details for %d/%d vulnerabilities", len(details), len(vuln_ids))
+        return details
 
     def _extract_severity(self, vuln: dict[str, Any]) -> str:
         """Extract severity string from OSV vulnerability data."""
