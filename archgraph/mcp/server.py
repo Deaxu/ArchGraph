@@ -225,7 +225,12 @@ TOOLS = [
                 },
                 "resolved_only": {
                     "type": "boolean",
-                    "description": "Only show SCIP-resolved calls (default: false)",
+                    "description": "Only show resolved calls (default: false)",
+                },
+                "source": {
+                    "type": "string",
+                    "enum": ["scip", "heuristic", "any"],
+                    "description": "Filter by resolution source: scip (compiler-verified, high confidence), heuristic (name-based, lower confidence), any (default)",
                 },
                 "max_depth": {
                     "type": "integer",
@@ -442,7 +447,7 @@ class ArchGraphMCP:
                 cloned_dir = tmp / "repo"
                 result = subprocess.run(
                     ["git", "clone", "--depth", "1", repo, str(cloned_dir)],
-                    capture_output=True, text=True, timeout=120,
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
                 )
                 if result.returncode != 0:
                     return {"error": f"git clone failed: {result.stderr[:300]}"}
@@ -597,15 +602,32 @@ class ArchGraphMCP:
         target = arguments.get("target", "")
         file = arguments.get("file", "")
         resolved_only = arguments.get("resolved_only", False)
+        source_filter = arguments.get("source", "any")
         max_depth = arguments.get("max_depth", 1)
         limit = arguments.get("limit", 20)
+
+        # Build source filter clause
+        source_clause = ""
+        if source_filter == "scip":
+            source_clause = "r.source = 'scip'"
+        elif source_filter == "heuristic":
+            source_clause = "r.source = 'heuristic'"
 
         if max_depth > 1:
             # Transitive call chain
             conditions = []
             params: dict[str, Any] = {"limit": limit, "depth": max_depth}
 
-            path_filter = "ALL(r IN relationships(path) WHERE r.resolved = true)" if resolved_only else "true"
+            path_filters: list[str] = []
+            if resolved_only:
+                path_filters.append("r.resolved = true")
+            if source_clause:
+                path_filters.append(source_clause)
+            if path_filters:
+                combined = " AND ".join(path_filters)
+                path_filter = f"ALL(r IN relationships(path) WHERE {combined})"
+            else:
+                path_filter = "true"
 
             if caller and target:
                 conditions.append("toLower(src.name) CONTAINS toLower($caller)")
@@ -645,6 +667,10 @@ class ArchGraphMCP:
             params["file"] = file
         if resolved_only:
             conditions.append("c.resolved = true")
+        if source_filter == "scip":
+            conditions.append("c.source = 'scip'")
+        elif source_filter == "heuristic":
+            conditions.append("c.source = 'heuristic'")
 
         where = " WHERE " + " AND ".join(conditions) if conditions else ""
         cypher = (
@@ -673,15 +699,17 @@ class ArchGraphMCP:
 
         # Get callers (upstream)
         callers = self._store.query(
-            "MATCH (f:Function)-[:CALLS]->(n:_Node {_id: $id}) "
-            "RETURN f._id AS id, f.name AS name, f.file AS file",
+            "MATCH (f:Function)-[c:CALLS]->(n:_Node {_id: $id}) "
+            "RETURN f._id AS id, f.name AS name, f.file AS file, "
+            "c.resolved AS resolved, c.source AS source",
             {"id": symbol_id},
         )
 
         # Get callees (downstream)
         callees = self._store.query(
-            "MATCH (n:_Node {_id: $id})-[:CALLS]->(f:Function) "
-            "RETURN f._id AS id, f.name AS name, f.file AS file",
+            "MATCH (n:_Node {_id: $id})-[c:CALLS]->(f:Function) "
+            "RETURN f._id AS id, f.name AS name, f.file AS file, "
+            "c.resolved AS resolved, c.source AS source",
             {"id": symbol_id},
         )
 

@@ -215,14 +215,16 @@ class TestSchemaExtensions:
 class TestImpactAnalyzer:
     """Tests for ImpactAnalyzer (unit tests without Neo4j)."""
 
-    def test_calculate_confidence(self):
-        """Confidence should be between 0 and 1."""
+    def test_edge_confidence(self):
+        """Edge confidence should return correct levels based on sources."""
         from archgraph.tool.impact import ImpactAnalyzer
 
-        analyzer = ImpactAnalyzer.__new__(ImpactAnalyzer)
-        assert analyzer._calculate_confidence(0, 5) == 0.0
-        assert analyzer._calculate_confidence(10, 5) > 0  # Should be positive
-        assert 0 <= analyzer._calculate_confidence(3, 5) <= 1
+        assert ImpactAnalyzer._edge_confidence([]) == "unknown"
+        assert ImpactAnalyzer._edge_confidence(["scip"]) == "high"
+        assert ImpactAnalyzer._edge_confidence(["scip", "scip"]) == "high"
+        assert ImpactAnalyzer._edge_confidence(["heuristic"]) == "low"
+        assert ImpactAnalyzer._edge_confidence(["scip", "heuristic"]) == "medium"
+        assert ImpactAnalyzer._edge_confidence(["unknown"]) == "unknown"
 
     def test_assess_risk(self):
         """Risk assessment should categorize correctly."""

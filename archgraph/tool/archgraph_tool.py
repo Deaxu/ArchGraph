@@ -271,6 +271,7 @@ class ArchGraphTool(BaseTool):
         target: str = "",
         file: str = "",
         resolved_only: bool = False,
+        source: str = "any",
         max_depth: int = 1,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
@@ -280,7 +281,8 @@ class ArchGraphTool(BaseTool):
             caller: Caller function name (partial match).
             target: Target function name (partial match).
             file: Filter by file path (partial match).
-            resolved_only: Only show SCIP-resolved calls.
+            resolved_only: Only show resolved calls.
+            source: Filter by resolution source: "scip" (compiler-verified), "heuristic" (name-based), "any".
             max_depth: Call chain depth (1=direct, >1=transitive).
             limit: Max results (default 20).
         """
@@ -294,7 +296,8 @@ class ArchGraphTool(BaseTool):
         try:
             return ag.search_calls(
                 caller=caller, target=target, file=file,
-                resolved_only=resolved_only, max_depth=max_depth, limit=limit,
+                resolved_only=resolved_only, source=source,
+                max_depth=max_depth, limit=limit,
             )
         finally:
             ag.close()

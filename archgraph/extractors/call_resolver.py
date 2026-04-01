@@ -117,6 +117,7 @@ class CallResolver:
             if target:
                 edge.target_id = target.id
                 edge.properties["resolved"] = True
+                edge.properties["source"] = "heuristic"
                 resolved_count += 1
 
         # Remove orphaned funcref: nodes (no remaining edges point to them)

@@ -49,9 +49,10 @@ class ImpactAnalyzer:
             # Find all callers up to max_depth (reverse CALLS)
             callers_cypher = (
                 "MATCH path = (caller:Function)-[:CALLS*1..{depth}]->(target:_Node {{_id: $id}}) "
-                "WITH caller, length(path) AS depth "
+                "WITH caller, length(path) AS depth, "
+                "[r IN relationships(path) | coalesce(r.source, 'unknown')] AS sources "
                 "RETURN caller._id AS id, caller.name AS name, "
-                "caller.file AS file, depth "
+                "caller.file AS file, depth, sources "
                 "ORDER BY depth, caller.name"
             ).format(depth=max_depth)
             callers = self._store.query(callers_cypher, {"id": symbol_id})
@@ -62,23 +63,35 @@ class ImpactAnalyzer:
             # Find all callees up to max_depth
             callees_cypher = (
                 "MATCH path = (source:_Node {{_id: $id}})-[:CALLS*1..{depth}]->(callee:Function) "
-                "WITH callee, length(path) AS depth "
+                "WITH callee, length(path) AS depth, "
+                "[r IN relationships(path) | coalesce(r.source, 'unknown')] AS sources "
                 "RETURN callee._id AS id, callee.name AS name, "
-                "callee.file AS file, depth "
+                "callee.file AS file, depth, sources "
                 "ORDER BY depth, callee.name"
             ).format(depth=max_depth)
             callees = self._store.query(callees_cypher, {"id": symbol_id})
         else:
             callees = []
 
-        # Group by depth
+        # Group by depth and compute per-entry confidence
         immediate: list[dict[str, Any]] = []
         downstream_1_2: list[dict[str, Any]] = []
         transitive: list[dict[str, Any]] = []
 
+        scip_count = 0
+        heuristic_count = 0
+        total_edges = 0
+
         for result in callers + callees:
             depth = result.get("depth", 1)
-            entry = {"id": result["id"], "name": result.get("name", ""), "file": result.get("file", "")}
+            sources = result.get("sources", [])
+            entry_confidence = self._edge_confidence(sources)
+            entry = {
+                "id": result["id"],
+                "name": result.get("name", ""),
+                "file": result.get("file", ""),
+                "confidence": entry_confidence,
+            }
             if depth == 1:
                 immediate.append(entry)
             elif depth <= 2:
@@ -86,9 +99,23 @@ class ImpactAnalyzer:
             else:
                 transitive.append(entry)
 
-        # Calculate confidence based on graph connectivity
+            for s in sources:
+                total_edges += 1
+                if s == "scip":
+                    scip_count += 1
+                elif s == "heuristic":
+                    heuristic_count += 1
+
+        # Overall confidence based on edge resolution sources
         total = len(immediate) + len(downstream_1_2) + len(transitive)
-        confidence = self._calculate_confidence(total, max_depth)
+        if total_edges == 0:
+            resolution_confidence = "unknown"
+        elif heuristic_count == 0:
+            resolution_confidence = "high"
+        elif scip_count == 0:
+            resolution_confidence = "low"
+        else:
+            resolution_confidence = "medium"
 
         # Check for security-sensitive impact
         security_flags = self._check_security_flags(callers + callees)
@@ -100,7 +127,12 @@ class ImpactAnalyzer:
             "downstream": downstream_1_2,
             "transitive": transitive,
             "total_affected": total,
-            "confidence": confidence,
+            "resolution_confidence": resolution_confidence,
+            "resolution_stats": {
+                "scip_edges": scip_count,
+                "heuristic_edges": heuristic_count,
+                "unknown_edges": total_edges - scip_count - heuristic_count,
+            },
             "security_flags": security_flags,
         }
 
@@ -162,13 +194,20 @@ class ImpactAnalyzer:
             "risk_level": risk_level,
         }
 
-    def _calculate_confidence(self, total: int, max_depth: int) -> float:
-        """Calculate confidence score (0.0-1.0) based on coverage."""
-        if total == 0:
-            return 0.0
-        # More connections = higher confidence (diminishing returns)
-        base = min(total / (max_depth * 5), 1.0)
-        return round(base, 2)
+    @staticmethod
+    def _edge_confidence(sources: list[str]) -> str:
+        """Determine confidence level from edge sources along a path."""
+        if not sources:
+            return "unknown"
+        has_heuristic = any(s == "heuristic" for s in sources)
+        has_scip = any(s == "scip" for s in sources)
+        if has_heuristic and not has_scip:
+            return "low"
+        if has_scip and not has_heuristic:
+            return "high"
+        if has_scip and has_heuristic:
+            return "medium"
+        return "unknown"
 
     def _check_security_flags(self, results: list[dict[str, Any]]) -> list[str]:
         """Check if any affected functions are security-sensitive."""
