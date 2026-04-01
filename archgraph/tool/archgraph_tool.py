@@ -1,8 +1,9 @@
-"""rlm-agent BaseTool integration — exposes Cypher query interface over Neo4j code graph."""
+"""rlm-agent BaseTool integration — exposes code graph query + management interface."""
 
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from archgraph.graph.neo4j_store import Neo4jStore
@@ -57,7 +58,7 @@ has_channel_op, has_defer
 ## Edge Types & Properties
 
 - **CONTAINS**: File → Function/Class/Struct/Enum/Macro
-- **CALLS**: Function → Function (includes unresolved funcref: nodes)
+- **CALLS**: Function → Function (resolved=true, source="scip" for compiler-verified; funcref: for unresolved)
 - **IMPORTS**: File → Module
 - **INHERITS**: Class → Class
 - **IMPLEMENTS**: Class → Interface
@@ -181,6 +182,122 @@ class ArchGraphTool(BaseTool):
         if result is None:
             return {"error": f"Symbol not found or has no body: {symbol_id}"}
         return result
+
+    @tool_method(
+        description=(
+            "Extract code graph from a repository. Accepts a git URL or local path. "
+            "Auto-detects languages, runs SCIP compiler-backed indexers, and imports into Neo4j."
+        ),
+        returns="dict with extraction results: nodes, edges, resolved_calls, time",
+    )
+    def extract(
+        self,
+        repo: str,
+        languages: str = "auto",
+        clear_db: bool = True,
+    ) -> dict[str, Any]:
+        """Extract code graph from a repository.
+
+        Args:
+            repo: Git URL (https/ssh) or local directory path.
+            languages: Comma-separated languages or 'auto' for detection.
+            clear_db: Clear existing graph data before import.
+        """
+        from archgraph.api import ArchGraph
+        ag = ArchGraph(
+            neo4j_uri=self._store._uri,
+            neo4j_user=self._store._user,
+            neo4j_password=self._store._password,
+            neo4j_database=self._store._database,
+        )
+        try:
+            return ag.extract(repo, languages=languages, clear_db=clear_db)
+        finally:
+            ag.close()
+
+    @tool_method(
+        description=(
+            "Search for symbols (functions, classes, structs, etc.) by name, type, or file pattern. "
+            "No Cypher knowledge needed."
+        ),
+        returns="list of matching symbols with id, name, labels, file, line",
+    )
+    def search(
+        self,
+        name: str = "",
+        type: str = "",
+        file_pattern: str = "",
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Search for symbols by name, type, or file pattern.
+
+        Args:
+            name: Symbol name (supports * wildcards for partial match).
+            type: Filter by type (function, class, struct, interface, enum, module, file).
+            file_pattern: Filter by file path pattern (supports * wildcards).
+            limit: Max results (default 20).
+        """
+        from archgraph.api import ArchGraph
+        ag = ArchGraph(
+            neo4j_uri=self._store._uri,
+            neo4j_user=self._store._user,
+            neo4j_password=self._store._password,
+            neo4j_database=self._store._database,
+        )
+        try:
+            return ag.search(name=name, type=type, file_pattern=file_pattern, limit=limit)
+        finally:
+            ag.close()
+
+    @tool_method(
+        description="List all repositories that have been extracted and indexed",
+        returns="list of repo dicts with name, path, languages, node/edge counts",
+    )
+    def repos(self) -> list[dict[str, Any]]:
+        """List all extracted repositories."""
+        from archgraph.api import ArchGraph
+        return ArchGraph().repos()
+
+    @tool_method(
+        description=(
+            "Search call relationships between functions. Find who calls a function "
+            "or what a function calls. Supports call chain traversal."
+        ),
+        returns="list of call edges with caller, target, file, resolved status",
+    )
+    def search_calls(
+        self,
+        caller: str = "",
+        target: str = "",
+        file: str = "",
+        resolved_only: bool = False,
+        max_depth: int = 1,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Search call relationships between functions.
+
+        Args:
+            caller: Caller function name (partial match).
+            target: Target function name (partial match).
+            file: Filter by file path (partial match).
+            resolved_only: Only show SCIP-resolved calls.
+            max_depth: Call chain depth (1=direct, >1=transitive).
+            limit: Max results (default 20).
+        """
+        from archgraph.api import ArchGraph
+        ag = ArchGraph(
+            neo4j_uri=self._store._uri,
+            neo4j_user=self._store._user,
+            neo4j_password=self._store._password,
+            neo4j_database=self._store._database,
+        )
+        try:
+            return ag.search_calls(
+                caller=caller, target=target, file=file,
+                resolved_only=resolved_only, max_depth=max_depth, limit=limit,
+            )
+        finally:
+            ag.close()
 
     def find_vulnerabilities(
         self, severity: str | None = None
