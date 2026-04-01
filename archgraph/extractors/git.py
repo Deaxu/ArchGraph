@@ -67,6 +67,12 @@ class GitExtractor(BaseExtractor):
             cmd_args.append(f"{since_commit}..HEAD")
         raw = _run_git(repo_path, *cmd_args)
         if not raw:
+            msg = (
+                "Git log returned no commits. "
+                "If using --depth for shallow clone, try a larger depth."
+            )
+            logger.warning(msg)
+            graph.warnings.append(msg)
             return
 
         current_commit: dict | None = None

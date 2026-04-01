@@ -21,7 +21,11 @@ from archgraph.graph.builder import GraphBuilder
 from archgraph.graph.neo4j_store import Neo4jStore
 from archgraph.manifest import delete_manifest
 
-console = Console()
+# Force UTF-8 on Windows to avoid UnicodeDecodeError with cp1254/cp1252 codepages.
+# On Linux/macOS UTF-8 is already the default so this is a no-op.
+import io as _io
+_stderr_safe = _io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+console = Console(stderr=True, file=_stderr_safe)
 
 _GIT_URL_RE = re.compile(
     r"^(?:https?://|git@|ssh://)"  # https://, git@, ssh://
@@ -64,14 +68,16 @@ def _setup_logging(verbose: bool) -> None:
 
 def _detect_languages(repo_path: Path) -> list[str]:
     """Auto-detect languages by counting file extensions."""
+    import os
     from collections import Counter
     from archgraph.config import EXTENSION_MAP, SKIP_DIRS
     ext_counter: Counter[str] = Counter()
-    for path in repo_path.rglob("*"):
-        if not path.is_file() or any(skip in path.parts for skip in SKIP_DIRS):
-            continue
-        if path.suffix.lower() in EXTENSION_MAP:
-            ext_counter[EXTENSION_MAP[path.suffix.lower()]] += 1
+    for root, dirs, filenames in os.walk(repo_path, followlinks=False):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for fname in filenames:
+            ext = Path(fname).suffix.lower()
+            if ext in EXTENSION_MAP:
+                ext_counter[EXTENSION_MAP[ext]] += 1
     detected = [lang for lang, _ in ext_counter.most_common(5)]
     return detected if detected else ["c", "cpp", "rust", "java", "go"]
 
@@ -694,21 +700,44 @@ def _impact(
 @click.argument("repo_path")
 @click.option("--format", "export_format", default="json", type=click.Choice(["json", "graphml", "csv"]))
 @click.option("--output", "-o", default=None, help="Output path")
-@click.option("--languages", "-l", default="auto")
-@click.option("-w", "--workers", type=int, default=0)
-def export(repo_path, export_format, output, languages, workers):
-    """Export graph to JSON, GraphML, or CSV."""
+@click.option("--from-repo", "from_repo", is_flag=True, default=False,
+              help="Re-extract from repo instead of reading from Neo4j")
+@click.option("--languages", "-l", default="auto", help="Languages (only with --from-repo)")
+@click.option("-w", "--workers", type=int, default=0, help="Workers (only with --from-repo)")
+@click.option("--neo4j-uri", default="bolt://localhost:7687", envvar="ARCHGRAPH_NEO4J_URI")
+@click.option("--neo4j-user", default="neo4j", envvar="ARCHGRAPH_NEO4J_USER")
+@click.option("--neo4j-password", default="archgraph", envvar="ARCHGRAPH_NEO4J_PASSWORD")
+@click.option("--neo4j-database", default="neo4j", envvar="ARCHGRAPH_NEO4J_DATABASE")
+def export(repo_path, export_format, output, from_repo, languages, workers,
+           neo4j_uri, neo4j_user, neo4j_password, neo4j_database):
+    """Export graph to JSON, GraphML, or CSV.
+
+    By default reads the graph from Neo4j. Use --from-repo to re-extract from source.
+    """
     from archgraph.export import export_json, export_graphml, export_csv
     _setup_logging(False)
     resolved_path = Path(repo_path).resolve()
-    if not resolved_path.is_dir():
-        console.print(f"[red]Not a directory: {repo_path}[/red]")
-        raise SystemExit(1)
-    langs = _detect_languages(resolved_path) if languages == "auto" else [l.strip() for l in languages.split(",")]
-    config = ExtractConfig(repo_path=resolved_path, languages=langs, workers=workers)
-    console.print("[bold]Extracting graph...[/bold]")
-    graph = GraphBuilder(config).build()
+
+    if from_repo:
+        if not resolved_path.is_dir():
+            console.print(f"[red]Not a directory: {repo_path}[/red]")
+            raise SystemExit(1)
+        langs = _detect_languages(resolved_path) if languages == "auto" else [l.strip() for l in languages.split(",")]
+        config = ExtractConfig(repo_path=resolved_path, languages=langs, workers=workers)
+        console.print("[bold]Extracting graph from repo...[/bold]")
+        graph = GraphBuilder(config).build()
+    else:
+        console.print("[bold]Loading graph from Neo4j...[/bold]")
+        try:
+            with Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database) as store:
+                graph = store.load_graph()
+        except Exception as e:
+            console.print(f"[red]Failed to load from Neo4j: {e}[/red]")
+            console.print("[dim]Hint: use --from-repo to extract directly from source[/dim]")
+            raise SystemExit(1)
+
     console.print(f"  -> {graph.node_count} nodes, {graph.edge_count} edges")
+
     if export_format == "json":
         out = Path(output) if output else resolved_path / "archgraph_export.json"
         export_json(graph, out)

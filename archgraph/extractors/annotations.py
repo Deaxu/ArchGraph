@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 from pathlib import Path
 
@@ -24,20 +25,18 @@ class AnnotationExtractor(BaseExtractor):
     def extract(self, repo_path: Path, **kwargs: object) -> GraphData:
         graph = GraphData()
 
-        for path in repo_path.rglob("*"):
-            if not path.is_file():
-                continue
-            if any(skip in path.parts for skip in SKIP_DIRS):
-                continue
-            if path.name in SKIP_FILES:
-                continue
-            if path.suffix not in EXTENSION_MAP:
-                continue
-
-            try:
-                self._scan_file(path, repo_path, graph)
-            except Exception:
-                logger.exception("Error scanning %s for annotations", path)
+        for root, dirs, filenames in os.walk(repo_path, followlinks=False):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for fname in filenames:
+                if fname in SKIP_FILES:
+                    continue
+                fpath = Path(root) / fname
+                if fpath.suffix not in EXTENSION_MAP:
+                    continue
+                try:
+                    self._scan_file(fpath, repo_path, graph)
+                except Exception:
+                    logger.exception("Error scanning %s for annotations", fpath)
 
         return graph
 

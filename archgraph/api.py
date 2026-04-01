@@ -147,7 +147,7 @@ class ArchGraph:
                 pass
 
             stats = graph.stats()
-            return {
+            result: dict[str, Any] = {
                 "status": "success",
                 "repo": str(resolved_path),
                 "languages": langs,
@@ -160,6 +160,9 @@ class ArchGraph:
                 "nodes_imported": import_result["nodes_imported"],
                 "edges_imported": import_result["edges_imported"],
             }
+            if graph.warnings:
+                result["warnings"] = graph.warnings
+            return result
         finally:
             if cloned_dir and cloned_dir.parent.exists():
                 shutil.rmtree(cloned_dir.parent, ignore_errors=True)

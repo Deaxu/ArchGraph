@@ -51,6 +51,7 @@ class GraphData:
 
     nodes: list[Node] = field(default_factory=list)
     edges: list[Edge] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
     def add_node(self, id: str, label: str, **properties: Any) -> Node:
         node = Node(id=id, label=label, properties=properties)
@@ -66,6 +67,7 @@ class GraphData:
         """Merge another GraphData into this one."""
         self.nodes.extend(other.nodes)
         self.edges.extend(other.edges)
+        self.warnings.extend(other.warnings)
 
     def deduplicate(self) -> None:
         """Remove duplicate nodes and edges."""
