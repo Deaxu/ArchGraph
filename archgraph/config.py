@@ -158,7 +158,7 @@ SKIP_FILES = frozenset({
 })
 
 # Neo4j batch sizes
-NEO4J_BATCH_SIZE = 5000
+NEO4J_BATCH_SIZE = 20000
 
 # OSV API settings
 OSV_API_URL = "https://api.osv.dev/v1/querybatch"

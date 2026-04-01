@@ -198,7 +198,7 @@ class Neo4jStore:
         return total
 
     def _import_edges(self, edges: list[Edge], *, use_create: bool = False) -> int:
-        """Batch-import edges."""
+        """Batch-import edges. Uses parallel sessions per edge type."""
         if not edges:
             return 0
 
@@ -207,39 +207,37 @@ class Neo4jStore:
         for edge in edges:
             by_type.setdefault(edge.type, []).append(edge)
 
-        total = 0
-        with self._session() as session:
-            for rel_type, type_edges in by_type.items():
+        def _import_edge_type(rel_type: str, type_edges: list[Edge]) -> int:
+            verb = "CREATE" if use_create else "MERGE"
+            count = 0
+            with self._session() as session:
                 for batch_start in range(0, len(type_edges), NEO4J_BATCH_SIZE):
                     batch = type_edges[batch_start : batch_start + NEO4J_BATCH_SIZE]
-                    records = []
-                    for edge in batch:
-                        rec = dict(edge.properties)
-                        rec["_src"] = edge.source_id
-                        rec["_tgt"] = edge.target_id
-                        records.append(rec)
+                    records = [
+                        {"_src": e.source_id, "_tgt": e.target_id, **e.properties}
+                        for e in batch
+                    ]
+                    session.run(
+                        f"UNWIND $records AS rec "
+                        f"MATCH (a:_Node {{_id: rec._src}}) "
+                        f"MATCH (b:_Node {{_id: rec._tgt}}) "
+                        f"{verb} (a)-[r:{rel_type}]->(b) "
+                        f"SET r += rec",
+                        records=records,
+                    )
+                    count += len(batch)
+            logger.debug("Imported %d %s edges", len(type_edges), rel_type)
+            return count
 
-                    if use_create:
-                        session.run(
-                            f"UNWIND $records AS rec "
-                            f"MATCH (a:_Node {{_id: rec._src}}) "
-                            f"MATCH (b:_Node {{_id: rec._tgt}}) "
-                            f"CREATE (a)-[r:{rel_type}]->(b) "
-                            f"SET r += rec",
-                            records=records,
-                        )
-                    else:
-                        session.run(
-                            f"UNWIND $records AS rec "
-                            f"MATCH (a:_Node {{_id: rec._src}}) "
-                            f"MATCH (b:_Node {{_id: rec._tgt}}) "
-                            f"MERGE (a)-[r:{rel_type}]->(b) "
-                            f"SET r += rec",
-                            records=records,
-                        )
-                    total += len(batch)
-
-                logger.debug("Imported %d %s edges", len(type_edges), rel_type)
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        total = 0
+        with ThreadPoolExecutor(max_workers=min(len(by_type), 4)) as pool:
+            futures = {
+                pool.submit(_import_edge_type, rt, edges_list): rt
+                for rt, edges_list in by_type.items()
+            }
+            for f in as_completed(futures):
+                total += f.result()
 
         logger.info("Imported %d edges total", total)
         return total

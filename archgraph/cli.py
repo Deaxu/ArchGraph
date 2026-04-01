@@ -58,12 +58,16 @@ def _clone_repo(url: str, branch: str | None, depth: int | None) -> Path:
 
 
 def _setup_logging(verbose: bool) -> None:
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(message)s",
-        handlers=[RichHandler(console=console, show_path=False, rich_tracebacks=True)],
-    )
+    handler = RichHandler(console=console, show_path=False, rich_tracebacks=True)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+
+    # Only set archgraph loggers to DEBUG; keep third-party (neo4j, urllib3) at WARNING
+    root = logging.getLogger()
+    root.setLevel(logging.WARNING)
+    root.addHandler(handler)
+
+    ag_logger = logging.getLogger("archgraph")
+    ag_logger.setLevel(logging.DEBUG if verbose else logging.INFO)
 
 
 def _detect_languages(repo_path: Path) -> list[str]:
