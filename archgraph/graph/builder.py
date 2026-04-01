@@ -16,7 +16,7 @@ from archgraph.extractors.annotations import AnnotationExtractor
 from archgraph.extractors.clang import ClangExtractor
 from archgraph.extractors.dependencies import DependencyExtractor
 from archgraph.extractors.git import GitExtractor
-from archgraph.extractors.call_resolver import CallResolver
+from archgraph.extractors.scip_resolver import ScipResolver
 from archgraph.extractors.security_labels import SecurityLabeler
 from archgraph.extractors.treesitter import TreeSitterExtractor
 from archgraph.graph.schema import GraphData
@@ -157,9 +157,9 @@ class GraphBuilder:
             ann_graph = ann_ext.extract(repo)
             graph.merge(ann_graph)
 
-        # Step 4.5: Call resolution
+        # Step 4.5: Call resolution (SCIP + heuristic fallback)
         logger.info("Incremental call resolution")
-        CallResolver(graph).resolve()
+        ScipResolver(graph, repo, self.config.languages).resolve()
 
         # Step 5: Security labeling — on current graph
         if self.config.include_security_labels:
@@ -291,9 +291,9 @@ class GraphBuilder:
         else:
             logger.info("Step 4/%d: Annotation extraction (skipped)", total_steps)
 
-        # Step 4.5: Call resolution
+        # Step 4.5: Call resolution (SCIP + heuristic fallback)
         logger.info("Step 4.5/%d: Call resolution", total_steps)
-        CallResolver(graph).resolve()
+        ScipResolver(graph, repo, self.config.languages).resolve()
 
         # Step 5: Security labeling
         if self.config.include_security_labels:
@@ -460,9 +460,9 @@ class GraphBuilder:
             else:
                 logger.info("Step 4/%d: Annotation extraction (skipped)", total_steps)
 
-            # Step 4.5: Call resolution (needs all funcs + imports merged)
+            # Step 4.5: Call resolution (SCIP + heuristic fallback)
             logger.info("Step 4.5/%d: Call resolution", total_steps)
-            CallResolver(graph).resolve()
+            ScipResolver(graph, repo, self.config.languages).resolve()
 
             # Step 5: Security labeling (needs merged graph with functions)
             if self.config.include_security_labels:
