@@ -205,16 +205,25 @@ class CallResolver:
         normalized_files = {p.replace("\\", "/"): p for p in self._file_set}
         caller_norm = caller_file.replace("\\", "/")
 
-        # Relative JS/TS imports: ./foo, ../foo
+        # Relative JS/TS imports: ./foo, ../foo, ../foo.js
         if module_specifier.startswith("."):
             from posixpath import dirname, normpath, join
             caller_dir = dirname(caller_norm)
-            base = normpath(join(caller_dir, module_specifier))
+            raw_base = normpath(join(caller_dir, module_specifier))
+            # Strip existing extension (.js, .ts, etc.) so we can try all variants
+            for strip_ext in (".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"):
+                if raw_base.endswith(strip_ext):
+                    raw_base = raw_base[: -len(strip_ext)]
+                    break
+            # Try exact match first (specifier already had extension)
+            exact = normpath(join(caller_dir, module_specifier))
+            if exact in normalized_files:
+                return normalized_files[exact]
             for ext in (
                 ".ts", ".tsx", ".js", ".jsx",
                 "/index.ts", "/index.tsx", "/index.js", "/index.jsx",
             ):
-                candidate = base + ext
+                candidate = raw_base + ext
                 if candidate in normalized_files:
                     return normalized_files[candidate]
             return None

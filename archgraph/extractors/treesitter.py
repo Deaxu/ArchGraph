@@ -1033,19 +1033,20 @@ class TreeSitterExtractor(BaseExtractor):
         # Rust: use foo::bar;
         if text.startswith("use "):
             return text[4:].rstrip(";").strip()
-        # Java/Kotlin: import foo.bar.Baz;
+        # JS/TS: import { x } from "module" or import "module" (check BEFORE Java)
+        if "from" in text:
+            parts = text.split("from")
+            return parts[-1].strip().strip("'\"; \n")
+        # Go: import "fmt" (has quotes, no from)
+        if text.startswith("import") and ('"' in text or "'" in text):
+            rest = text[6:].strip().strip("()")
+            return rest.strip().strip("'\"")
+        # Java/Kotlin: import foo.bar.Baz; (no quotes, no from)
         if text.startswith("import "):
             target = text[7:].rstrip(";").strip()
-            # Remove "static " prefix
             if target.startswith("static "):
                 target = target[7:]
             return target
-        # JS/TS: import { x } from "module" or import "module"
-        if "from" in text:
-            parts = text.split("from")
-            return parts[-1].strip().strip("'\"; ")
-        if text.startswith("import "):
-            return text[7:].strip("'\"(); ")
         return text[:200]
 
     def _parse_named_imports(self, text: str) -> str:
