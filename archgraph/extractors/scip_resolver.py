@@ -49,7 +49,7 @@ class TypeScriptIndexer:
         result = subprocess.run(
             ["npm", "install", "--save-dev", "@sourcegraph/scip-typescript"],
             cwd=str(repo_path),
-            capture_output=True, text=True, timeout=120, shell=_SHELL,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, shell=_SHELL,
         )
         if result.returncode == 0 and self._is_available(repo_path):
             return True
@@ -57,7 +57,7 @@ class TypeScriptIndexer:
         logger.info("Repo-local install failed, trying global...")
         subprocess.run(
             ["npm", "install", "-g", "@sourcegraph/scip-typescript"],
-            capture_output=True, text=True, timeout=120, shell=_SHELL,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, shell=_SHELL,
         )
         return self._is_available(repo_path)
 
@@ -75,7 +75,7 @@ class TypeScriptIndexer:
             result = subprocess.run(
                 cmd,
                 cwd=str(repo_path),
-                capture_output=True, text=True, timeout=300, shell=_SHELL,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, shell=_SHELL,
             )
         except subprocess.TimeoutExpired:
             logger.warning("scip-typescript timed out")
@@ -125,7 +125,7 @@ class PythonIndexer:
         logger.info("Installing @sourcegraph/scip-python...")
         subprocess.run(
             ["npm", "install", "-g", "@sourcegraph/scip-python"],
-            capture_output=True, text=True, timeout=120, shell=_SHELL,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, shell=_SHELL,
         )
 
         # Auto-patch the Windows bug
@@ -152,7 +152,7 @@ class PythonIndexer:
         try:
             result = subprocess.run(
                 cmd, cwd=str(repo_path),
-                capture_output=True, text=True, timeout=300, shell=_SHELL,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300, shell=_SHELL,
             )
         except subprocess.TimeoutExpired:
             logger.warning("scip-python timed out")
@@ -170,7 +170,7 @@ class PythonIndexer:
         try:
             result = subprocess.run(
                 ["scip-python", "--help"],
-                capture_output=True, text=True, timeout=30, shell=_SHELL,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30, shell=_SHELL,
             )
             if result.returncode != 0 or "SyntaxError" in (result.stderr or ""):
                 return False
@@ -230,7 +230,7 @@ class PythonIndexer:
         # Fallback: ask npm prefix
         try:
             result = subprocess.run(
-                ["npm", "prefix", "-g"], capture_output=True, text=True, timeout=10,
+                ["npm", "prefix", "-g"], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=10,
                 shell=_SHELL,
             )
             if result.returncode == 0:
@@ -411,7 +411,7 @@ class JavaIndexer:
         try:
             result = subprocess.run(
                 cmd, cwd=str(repo_path),
-                capture_output=True, text=True, timeout=600,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
                 env=env,
             )
         except subprocess.TimeoutExpired:
@@ -422,7 +422,8 @@ class JavaIndexer:
                 shim_cleanup()
 
         if result.returncode != 0:
-            logger.warning("scip-java failed: %s", result.stderr[:500])
+            err = (result.stderr or result.stdout or "")[:500]
+            logger.warning("scip-java failed: %s", err)
             return None
         return output_path if output_path.exists() else None
 
@@ -476,7 +477,7 @@ class JavaIndexer:
         try:
             result = subprocess.run(
                 [str(cs), "launch", self._SCIP_JAVA_COORD, "--", "version"],
-                capture_output=True, text=True, timeout=60,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
                 env=tools_env(),
             )
             return result.returncode == 0
@@ -500,7 +501,7 @@ class RustIndexer:
         logger.info("Installing rust-analyzer via rustup...")
         result = subprocess.run(
             ["rustup", "component", "add", "rust-analyzer"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
         )
         return result.returncode == 0 and self._is_available()
 
@@ -564,7 +565,7 @@ class GoIndexer:
         logger.info("Installing scip-go...")
         result = subprocess.run(
             ["go", "install", "github.com/sourcegraph/scip-go/cmd/scip-go@latest"],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
             env={**__import__("os").environ, "GOBIN": str(Path.home() / "go" / "bin")},
         )
         return result.returncode == 0 and self._is_available()
@@ -587,7 +588,7 @@ class GoIndexer:
         try:
             result = subprocess.run(
                 cmd, cwd=str(repo_path),
-                capture_output=True, text=True, timeout=300,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
             )
         except subprocess.TimeoutExpired:
             logger.warning("scip-go timed out")
@@ -735,12 +736,17 @@ class ScipResolver:
         """Parse SCIP index and generate CALLS edges. Returns edges created."""
         sym_to_def, references = parse_scip_index(scip_data)
 
+        total_refs = len(references)
+        matched_sym = 0
+        matched_caller = 0
+        matched_target = 0
         created = 0
         seen_edges: set[tuple[str, str]] = set()
 
         for ref_file, ref_line, symbol in references:
             if symbol not in sym_to_def:
                 continue
+            matched_sym += 1
 
             def_file, def_line, def_name = sym_to_def[symbol]
 
@@ -748,10 +754,12 @@ class ScipResolver:
             caller = self._find_enclosing_function(ref_file, ref_line + 1)
             if caller is None:
                 continue
+            matched_caller += 1
 
             target = self._match_target_node(def_file, def_line, def_name)
             if target is None:
                 continue
+            matched_target += 1
 
             if caller.id == target.id:
                 continue
@@ -766,6 +774,14 @@ class ScipResolver:
                 resolved=True, source="scip",
             )
             created += 1
+
+        if total_refs > 0:
+            logger.info(
+                "SCIP resolution: %d refs -> %d sym match -> %d caller match "
+                "-> %d target match -> %d edges (%.1f%% of refs)",
+                total_refs, matched_sym, matched_caller, matched_target,
+                created, (created / total_refs) * 100,
+            )
 
         return created
 

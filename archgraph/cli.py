@@ -48,7 +48,7 @@ def _clone_repo(url: str, branch: str | None, depth: int | None) -> Path:
         cmd += ["--branch", branch]
     cmd += [url, str(tmp / "repo")]
     console.print(f"[bold]Cloning[/bold] [cyan]{url}[/cyan] ...")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
         shutil.rmtree(tmp, ignore_errors=True)
         console.print(f"[red]git clone failed:[/red] {result.stderr.strip()}")
@@ -714,7 +714,12 @@ def _impact(
             result = analyzer.analyze_impact(symbol_id, direction, depth)
 
             console.print(f"\n[bold]Impact Analysis[/bold] — [cyan]{symbol_id}[/cyan]")
-            console.print(f"Direction: {direction} | Confidence: {result['confidence']}")
+            res_conf = result.get("resolution_confidence", "unknown")
+            stats = result.get("resolution_stats", {})
+            console.print(
+                f"Direction: {direction} | Resolution: {res_conf} "
+                f"(scip:{stats.get('scip_edges', 0)} heuristic:{stats.get('heuristic_edges', 0)})"
+            )
 
             if result["immediate"]:
                 console.print(f"\n[green]Immediate (depth 1):[/green]")

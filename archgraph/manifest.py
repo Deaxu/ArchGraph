@@ -234,6 +234,8 @@ def get_git_head(repo_path: Path) -> str:
             ["git", "-C", str(repo_path), "rev-parse", "HEAD"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
         )
         if result.returncode == 0:

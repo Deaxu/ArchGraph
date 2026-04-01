@@ -190,7 +190,7 @@ def _create_mvn_exe_shim(bin_dir: Path) -> bool:
         src_file.write_text(_MVN_SHIM_GO)
         result = subprocess.run(
             [go, "build", "-ldflags=-s -w", "-o", str(mvn_exe), str(src_file)],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60,
             env={**os.environ, "GOOS": "windows", "GOARCH": "amd64"},
         )
         if result.returncode == 0 and mvn_exe.exists():
