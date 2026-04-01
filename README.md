@@ -338,20 +338,26 @@ docker compose down        # Stops Neo4j
 
 ## Comparison
 
-| Feature | **ArchGraph** | **Sourcegraph** | **CodeQL** |
-|---------|---------------|-----------------|------------|
-| **License** | MIT | BSL | Proprietary |
-| **Languages** | 11 | 40+ | 10+ |
-| **Graph DB** | Neo4j (Cypher) | PostgreSQL | Custom |
-| **MCP Server** | 12 tools | -- | -- |
-| **Python API** | 12 methods | -- | -- |
-| **SCIP Resolution** | 6 languages | Internal | -- |
-| **Body Storage** | In-graph | -- | -- |
-| **Taint Analysis** | libclang + tree-sitter | -- | QL queries |
-| **CVE Detection** | OSV API | -- | Advisory DB |
-| **Clustering** | Greedy modularity | -- | -- |
-| **Local-first** | Yes | No (SaaS) | Yes |
-| **Incremental** | Manifest-based | Yes | -- |
+| Feature | **ArchGraph** | **GitNexus** | **Sourcegraph** | **CodeQL** |
+|---------|---------------|--------------|-----------------|------------|
+| **License** | MIT | PolyForm NC | BSL | Proprietary |
+| **Written In** | Python | TypeScript | Go | C++/JS |
+| **Graph DB** | Neo4j (Cypher) | KuzuDB | PostgreSQL | Custom |
+| **Languages** | 11 | 13 | 40+ | 10+ |
+| **MCP Server** | 12 tools | 7 tools | -- | -- |
+| **SCIP Resolution** | 6 languages | -- | Internal | -- |
+| **Python API** | 12 methods | -- | -- | -- |
+| **Body Storage** | In-graph | -- | -- | -- |
+| **Web UI** | FastAPI | React | Yes | -- |
+| **Taint Analysis** | libclang + tree-sitter | -- | -- | QL queries |
+| **CVE Detection** | OSV API | -- | Yes | Advisory DB |
+| **Clustering** | Greedy modularity | Leiden | -- | -- |
+| **Process Tracing** | Yes | Yes | -- | -- |
+| **Hybrid Search** | BM25 + Graph | BM25 + Semantic | Yes | -- |
+| **Local-first** | Yes | Yes | No (SaaS) | Yes |
+| **Incremental** | Manifest-based | Yes | Yes | -- |
+| **Agent Skills** | Security-focused | General | -- | -- |
+| **Impact Analysis** | Yes | Yes | Partial | Yes |
 
 **Why ArchGraph?** Security-first design (taint tracking, CVE detection), MIT license, first-class MCP integration for AI agents, Neo4j's full Cypher power, and a Python ecosystem that's easy to extend.
 
