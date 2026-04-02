@@ -945,49 +945,9 @@ async def run_mcp_server(**kwargs: Any) -> None:
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
         if name == "extract":
-            # Progress bridge: worker thread puts messages on a queue,
-            # async drainer sends them via MCP log notifications.
-            import queue
-            progress_queue: queue.Queue[tuple[int, int, str] | None] = queue.Queue()
-
-            def progress_fn(step: int, total: int, msg: str) -> None:
-                progress_queue.put((step, total, msg))
-
-            # Resolve MCP session for log messages (best-effort)
-            session = None
-            try:
-                session = server.request_context.session
-            except LookupError:
-                pass
-
-            async def drain_progress() -> None:
-                """Drain progress queue and send MCP log notifications."""
-                while True:
-                    await asyncio.sleep(0.1)
-                    while not progress_queue.empty():
-                        item = progress_queue.get_nowait()
-                        if item is None:
-                            return
-                        step, total, msg = item
-                        if session:
-                            try:
-                                await session.send_log_message(
-                                    "info", f"[{step}/{total}] {msg}",
-                                    logger="archgraph",
-                                )
-                            except Exception:
-                                pass
-
-            # Run extract + progress drainer concurrently
-            extract_task = asyncio.to_thread(
-                arch._handle_extract_sync, arguments, progress_fn
-            )
-            drain_task = asyncio.create_task(drain_progress())
-
-            result = await extract_task
-            progress_queue.put(None)  # signal drain to stop
-            await drain_task
-
+            # Run synchronously — blocks event loop but avoids
+            # asyncio.to_thread deadlock with MCP stdio transport.
+            result = arch._handle_extract_sync(arguments, None)
             if isinstance(result, dict) and result.get("status") == "success":
                 repo_name = result.get("repo_name")
                 if repo_name:
