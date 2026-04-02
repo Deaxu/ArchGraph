@@ -158,8 +158,13 @@ class GraphBuilder:
             graph.merge(ann_graph)
 
         # Step 4.5: Call resolution (SCIP + heuristic fallback)
-        logger.info("Incremental call resolution")
-        ScipResolver(graph, repo, self.config.languages).resolve()
+        if self.config.include_scip:
+            logger.info("Incremental call resolution")
+            ScipResolver(graph, repo, self.config.languages).resolve()
+        else:
+            logger.info("Incremental call resolution (SCIP skipped)")
+            from archgraph.extractors.call_resolver import CallResolver
+            CallResolver(graph).resolve()
 
         # Step 5: Security labeling — on current graph
         if self.config.include_security_labels:
@@ -292,8 +297,13 @@ class GraphBuilder:
             logger.info("Step 4/%d: Annotation extraction (skipped)", total_steps)
 
         # Step 4.5: Call resolution (SCIP + heuristic fallback)
-        logger.info("Step 4.5/%d: Call resolution", total_steps)
-        ScipResolver(graph, repo, self.config.languages).resolve()
+        if self.config.include_scip:
+            logger.info("Step 4.5/%d: Call resolution (SCIP + heuristic)", total_steps)
+            ScipResolver(graph, repo, self.config.languages).resolve()
+        else:
+            logger.info("Step 4.5/%d: Call resolution (heuristic only)", total_steps)
+            from archgraph.extractors.call_resolver import CallResolver
+            CallResolver(graph).resolve()
 
         # Step 5: Security labeling
         if self.config.include_security_labels:
@@ -461,8 +471,13 @@ class GraphBuilder:
                 logger.info("Step 4/%d: Annotation extraction (skipped)", total_steps)
 
             # Step 4.5: Call resolution (SCIP + heuristic fallback)
-            logger.info("Step 4.5/%d: Call resolution", total_steps)
-            ScipResolver(graph, repo, self.config.languages).resolve()
+            if self.config.include_scip:
+                logger.info("Step 4.5/%d: Call resolution (SCIP + heuristic)", total_steps)
+                ScipResolver(graph, repo, self.config.languages).resolve()
+            else:
+                logger.info("Step 4.5/%d: Call resolution (heuristic only)", total_steps)
+                from archgraph.extractors.call_resolver import CallResolver
+                CallResolver(graph).resolve()
 
             # Step 5: Security labeling (needs merged graph with functions)
             if self.config.include_security_labels:

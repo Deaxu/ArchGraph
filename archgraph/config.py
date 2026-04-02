@@ -203,5 +203,6 @@ class ExtractConfig:
     include_clustering: bool = False
     include_process: bool = False
     include_skills: bool = False
+    include_scip: bool = True  # Run SCIP compiler-backed call resolution
     include_body: bool = True  # Store source code in graph nodes
     max_body_size: int = 51_200  # 50KB max per node, truncate beyond

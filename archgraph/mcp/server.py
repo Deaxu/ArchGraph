@@ -145,7 +145,8 @@ TOOLS = [
         "description": (
             "Extract code graph from a repository. Accepts a git URL or local path. "
             "Auto-detects languages, runs SCIP compiler-backed indexers, and imports into Neo4j. "
-            "Use this to add a new codebase for analysis."
+            "Use this to add a new codebase for analysis. "
+            "May take several minutes for large repos (SCIP compiles code for accurate call resolution)."
         ),
         "inputSchema": {
             "type": "object",
