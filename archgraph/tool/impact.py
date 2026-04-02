@@ -24,6 +24,7 @@ class ImpactAnalyzer:
         symbol_id: str,
         direction: str = "upstream",
         max_depth: int = 5,
+        repo_name: str | None = None,
     ) -> dict[str, Any]:
         """Analyze impact of a symbol.
 
@@ -31,45 +32,56 @@ class ImpactAnalyzer:
             symbol_id: Node ID (e.g. "func:src/auth.c:validate:42")
             direction: "upstream" (callers), "downstream" (callees), or "both"
             max_depth: Maximum traversal depth
+            repo_name: Optional repository name to filter traversal
 
         Returns:
             Dict with impact analysis results
         """
         if self._store:
-            return self._analyze_from_store(symbol_id, direction, max_depth)
+            return self._analyze_from_store(symbol_id, direction, max_depth, repo_name)
         raise RuntimeError("ImpactAnalyzer requires a Neo4jStore connection")
 
     def _analyze_from_store(
-        self, symbol_id: str, direction: str, max_depth: int
+        self, symbol_id: str, direction: str, max_depth: int, repo_name: str | None = None
     ) -> dict[str, Any]:
         """Analyze impact using Neo4j graph queries."""
         assert self._store is not None
 
         if direction in ("upstream", "both"):
             # Find all callers up to max_depth (reverse CALLS)
+            repo_filter = " AND caller.repo = $repo" if repo_name else ""
             callers_cypher = (
                 "MATCH path = (caller:Function)-[:CALLS*1..{depth}]->(target:_Node {{_id: $id}}) "
+                f"WHERE true{repo_filter} "
                 "WITH caller, length(path) AS depth, "
                 "[r IN relationships(path) | coalesce(r.source, 'unknown')] AS sources "
                 "RETURN caller._id AS id, caller.name AS name, "
                 "caller.file AS file, depth, sources "
                 "ORDER BY depth, caller.name"
             ).format(depth=max_depth)
-            callers = self._store.query(callers_cypher, {"id": symbol_id})
+            callers_params: dict[str, Any] = {"id": symbol_id}
+            if repo_name:
+                callers_params["repo"] = repo_name
+            callers = self._store.query(callers_cypher, callers_params)
         else:
             callers = []
 
         if direction in ("downstream", "both"):
             # Find all callees up to max_depth
+            repo_filter_callee = " AND callee.repo = $repo" if repo_name else ""
             callees_cypher = (
                 "MATCH path = (source:_Node {{_id: $id}})-[:CALLS*1..{depth}]->(callee:Function) "
+                f"WHERE true{repo_filter_callee} "
                 "WITH callee, length(path) AS depth, "
                 "[r IN relationships(path) | coalesce(r.source, 'unknown')] AS sources "
                 "RETURN callee._id AS id, callee.name AS name, "
                 "callee.file AS file, depth, sources "
                 "ORDER BY depth, callee.name"
             ).format(depth=max_depth)
-            callees = self._store.query(callees_cypher, {"id": symbol_id})
+            callees_params: dict[str, Any] = {"id": symbol_id}
+            if repo_name:
+                callees_params["repo"] = repo_name
+            callees = self._store.query(callees_cypher, callees_params)
         else:
             callees = []
 

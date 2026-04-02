@@ -360,7 +360,7 @@ class ArchGraphMCP:
             return {"error": "No active repository. Call use_repo first to select a repository."}
 
         # Check cache
-        if name not in ("detect_changes",):
+        if name not in ("detect_changes", "use_repo", "extract"):
             cache_arguments = {**arguments, "__repo": self._current_repo}
             cached = self._cache.get(name, cache_arguments)
             if cached is not None:
@@ -387,7 +387,7 @@ class ArchGraphMCP:
                 else:
                     direction = arguments.get("direction", "upstream")
                     max_depth = arguments.get("max_depth", 5)
-                    result = self._impact.analyze_impact(symbol_id, direction, max_depth)
+                    result = self._impact.analyze_impact(symbol_id, direction, max_depth, repo_name=repo)
 
             elif name == "context":
                 repo = self._require_repo()
@@ -441,7 +441,7 @@ class ArchGraphMCP:
             result = {"error": str(e)}
         
         # Cache successful results
-        if name not in ("detect_changes",) and result is not None and (
+        if name not in ("detect_changes", "use_repo", "extract") and result is not None and (
             not isinstance(result, dict) or "error" not in result
         ):
             self._cache.set(name, {**arguments, "__repo": self._current_repo}, result)
