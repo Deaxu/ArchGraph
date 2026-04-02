@@ -297,6 +297,12 @@ RESOURCES = [
 
 import hashlib
 
+_REPO_REQUIRED_TOOLS: frozenset[str] = frozenset({
+    "search", "context", "impact", "source", "stats",
+    "detect_changes", "query", "cypher", "search_calls",
+})
+
+
 class _ToolCache:
     """Simple TTL cache for MCP tool results."""
     
@@ -357,12 +363,8 @@ class ArchGraphMCP:
                 return cached
         
         # Tools that require an active repo to be set
-        _REPO_REQUIRED_TOOLS = {
-            "search", "context", "impact", "source", "stats",
-            "detect_changes", "query", "cypher", "search_calls",
-        }
         if name in _REPO_REQUIRED_TOOLS and self._current_repo is None:
-            return {"error": f"No active repository. Call use_repo first to select a repository."}
+            return {"error": "No active repository. Call use_repo first to select a repository."}
 
         result = None
         try:
@@ -400,6 +402,8 @@ class ArchGraphMCP:
 
             elif name == "extract":
                 result = await asyncio.to_thread(self._handle_extract_sync, arguments)
+                if isinstance(result, dict) and result.get("status") == "success":
+                    self._current_repo = result.get("repo_name") or Path(arguments.get("repo", "")).name
 
             elif name == "search":
                 result = self._handle_search(arguments)
@@ -525,7 +529,6 @@ class ArchGraphMCP:
             self._store.create_indexes()
             import_start = time.time()
             import_result = self._store.import_graph(graph, repo_name=repo_name)
-            self._current_repo = repo_name
             import_time = time.time() - import_start
 
             # Register in registry
@@ -550,6 +553,7 @@ class ArchGraphMCP:
             return {
                 "status": "success",
                 "repo": str(resolved_path),
+                "repo_name": repo_name,
                 "languages": langs,
                 "nodes": graph.node_count,
                 "edges": graph.edge_count,
@@ -634,16 +638,17 @@ class ArchGraphMCP:
                 "split(f.path, '/')[0] AS root, count(f) AS file_count "
                 "ORDER BY file_count DESC LIMIT 10"
             )
-            return files
+            return [{**f, "active": False} for f in files]
 
     def _handle_use_repo(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Set the active repository for subsequent tool calls."""
         name = arguments.get("name", "").strip()
         if not name:
             return {"error": "name is required"}
-        entry = get_registry().get(name)
+        registry = get_registry()
+        entry = registry.get(name)
         if entry is None:
-            available = [e.name for e in get_registry().list_repos()]
+            available = [e.name for e in registry.list_repos()]
             return {
                 "error": f"Repository {name!r} not found. Available: {available}",
             }

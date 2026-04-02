@@ -18,15 +18,6 @@ def _make_mcp() -> ArchGraphMCP:
 
 class TestCurrentRepoState:
 
-    def test_initial_current_repo_is_none(self) -> None:
-        mcp = ArchGraphMCP.__new__(ArchGraphMCP)
-        mcp._store = MagicMock()
-        mcp._impact = MagicMock()
-        from archgraph.mcp.server import _ToolCache
-        mcp._cache = _ToolCache()
-        mcp._current_repo = None
-        assert mcp._current_repo is None
-
     @pytest.mark.asyncio
     async def test_use_repo_sets_current_repo(self) -> None:
         mcp = _make_mcp()
