@@ -67,3 +67,47 @@ class TestCurrentRepoState:
         inactive = [r for r in result if r["name"] == "usb"]
         assert active[0]["active"] is True
         assert inactive[0]["active"] is False
+
+
+class TestAutoRepoFilter:
+
+    @pytest.mark.asyncio
+    async def test_search_filters_by_active_repo(self) -> None:
+        mcp = _make_mcp()
+        mcp._current_repo = "fastify"
+        mcp._store.query.return_value = []
+
+        await mcp.handle_tool_call("search", {"name": "route"})
+
+        cypher = mcp._store.query.call_args[0][0]
+        params = mcp._store.query.call_args[0][1]
+        assert "repo" in cypher
+        assert params.get("repo") == "fastify"
+
+    @pytest.mark.asyncio
+    async def test_query_requires_active_repo(self) -> None:
+        mcp = _make_mcp()
+        result = await mcp.handle_tool_call("query", {"cypher": "MATCH (n) RETURN n"})
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_query_injects_repo_param(self) -> None:
+        mcp = _make_mcp()
+        mcp._current_repo = "fastify"
+        mcp._store.query.return_value = []
+
+        await mcp.handle_tool_call("query", {"cypher": "MATCH (n {repo: $_repo}) RETURN n"})
+
+        params = mcp._store.query.call_args[0][1]
+        assert params.get("_repo") == "fastify"
+
+    @pytest.mark.asyncio
+    async def test_stats_filtered_by_repo(self) -> None:
+        mcp = _make_mcp()
+        mcp._current_repo = "fastify"
+        mcp._store.stats.return_value = {"nodes": {}, "edges": {}}
+        mcp._store.query.return_value = [{"count": 0}]
+
+        await mcp.handle_tool_call("stats", {})
+
+        mcp._store.stats.assert_called_once_with(repo="fastify")

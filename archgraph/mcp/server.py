@@ -299,7 +299,7 @@ import hashlib
 
 _REPO_REQUIRED_TOOLS: frozenset[str] = frozenset({
     "search", "context", "impact", "source", "stats",
-    "detect_changes", "query", "cypher", "search_calls",
+    "detect_changes", "query", "cypher", "search_calls", "find_vulnerabilities",
 })
 
 
@@ -369,32 +369,46 @@ class ArchGraphMCP:
         result = None
         try:
             if name == "query" or name == "cypher":
+                repo = self._require_repo()
                 cypher = arguments.get("cypher") or arguments.get("query", "")
-                params = arguments.get("params", {})
+                params = dict(arguments.get("params") or {})
+                params["_repo"] = repo
                 result = self._store.query(cypher, params)
 
             elif name == "impact":
+                repo = self._require_repo()
                 symbol_id = arguments["symbol_id"]
-                direction = arguments.get("direction", "upstream")
-                max_depth = arguments.get("max_depth", 5)
-                result = self._impact.analyze_impact(symbol_id, direction, max_depth)
+                check = self._store.query(
+                    "MATCH (n:_Node {_id: $id, repo: $repo}) RETURN n._id LIMIT 1",
+                    {"id": symbol_id, "repo": repo},
+                )
+                if not check:
+                    result = {"error": f"Symbol {symbol_id!r} not found in repo {repo!r}"}
+                else:
+                    direction = arguments.get("direction", "upstream")
+                    max_depth = arguments.get("max_depth", 5)
+                    result = self._impact.analyze_impact(symbol_id, direction, max_depth)
 
             elif name == "context":
-                result = self._get_context(arguments["symbol_id"])
+                repo = self._require_repo()
+                result = self._get_context(arguments["symbol_id"], repo=repo)
 
             elif name == "detect_changes":
-                result = self._impact.analyze_change_impact(arguments["changed_files"])
+                repo = self._require_repo()
+                result = self._impact.analyze_change_impact(arguments["changed_files"], repo_name=repo)
 
             elif name == "find_vulnerabilities":
                 severity = arguments.get("severity")
                 result = self._find_vulnerabilities(severity)
 
             elif name == "stats":
-                result = self._get_stats()
+                repo = self._require_repo()
+                result = self._get_stats(repo)
 
             elif name == "source":
+                repo = self._require_repo()
                 symbol_id = arguments["symbol_id"]
-                source_result = self._store.get_source(symbol_id)
+                source_result = self._store.get_source(symbol_id, repo=repo)
                 if source_result:
                     result = source_result
                 else:
@@ -459,6 +473,12 @@ class ArchGraphMCP:
             return {"error": str(e)}
 
     # ── New tool handlers ───────────────────────────────────────────────
+
+    def _require_repo(self) -> str:
+        """Return the active repo name or raise ValueError."""
+        if self._current_repo is None:
+            raise ValueError("No active repo. Call use_repo first.")
+        return self._current_repo
 
     def _handle_extract_sync(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """Handle extract tool — clone, detect, SCIP index, import.
@@ -585,8 +605,9 @@ class ArchGraphMCP:
             "interface": "Interface", "enum": "Enum", "module": "Module", "file": "File",
         }
 
-        conditions = ["n._id IS NOT NULL"]
-        params: dict[str, Any] = {}
+        repo = self._require_repo()
+        conditions = ["n._id IS NOT NULL", "n.repo = $repo"]
+        params: dict[str, Any] = {"repo": repo}
 
         if sym_type:
             label = type_map.get(sym_type.lower())
@@ -662,6 +683,7 @@ class ArchGraphMCP:
 
     def _handle_search_calls(self, arguments: dict[str, Any]) -> list[dict[str, Any]]:
         """Handle search_calls tool — find call relationships."""
+        repo = self._require_repo()
         caller = arguments.get("caller", "")
         target = arguments.get("target", "")
         file = arguments.get("file", "")
@@ -684,8 +706,8 @@ class ArchGraphMCP:
             # Transitive call chain
             # Neo4j requires literal integers in variable-length patterns,
             # so we interpolate max_depth directly (validated above).
-            conditions = []
-            params: dict[str, Any] = {"limit": limit}
+            conditions = ["src.repo = $repo", "dst.repo = $repo"]
+            params: dict[str, Any] = {"repo": repo, "limit": limit}
 
             path_filters: list[str] = []
             if resolved_only:
@@ -722,8 +744,8 @@ class ArchGraphMCP:
             return self._store.query(cypher, params)
 
         # Direct calls (depth=1)
-        conditions = []
-        params = {"limit": limit}
+        conditions = ["f.repo = $repo", "t.repo = $repo"]
+        params: dict[str, Any] = {"repo": repo, "limit": limit}
 
         if caller:
             conditions.append("toLower(f.name) CONTAINS toLower($caller)")
@@ -752,16 +774,16 @@ class ArchGraphMCP:
         )
         return self._store.query(cypher, params)
 
-    def _get_context(self, symbol_id: str) -> dict[str, Any]:
+    def _get_context(self, symbol_id: str, repo: str) -> dict[str, Any]:
         """Get 360-degree context of a symbol."""
         # Get symbol properties
         symbol = self._store.query(
-            "MATCH (n:_Node {_id: $id}) RETURN properties(n) AS props",
-            {"id": symbol_id},
+            "MATCH (n:_Node {_id: $id}) WHERE n.repo = $repo RETURN properties(n) AS props",
+            {"id": symbol_id, "repo": repo},
         )
 
         if not symbol:
-            return {"error": f"Symbol not found: {symbol_id}"}
+            return {"error": f"Symbol not found in repo {repo!r}: {symbol_id}"}
 
         props = symbol[0].get("props", {})
         props.pop("body", None)  # body is served via the source tool
@@ -852,26 +874,26 @@ class ArchGraphMCP:
 
     def _find_vulnerabilities(self, severity: str | None = None) -> list[dict[str, Any]]:
         """Find vulnerabilities with optional severity filter."""
+        repo = self._require_repo()
         cypher = (
-            "MATCH (d:Dependency)-[:AFFECTED_BY]->(v:Vulnerability) "
+            "MATCH (d:Dependency {repo: $repo})-[:AFFECTED_BY]->(v:Vulnerability) "
             "RETURN d.name AS dependency, d.version AS version, "
             "v.vuln_id AS vuln_id, v.summary AS summary, v.severity AS severity"
         )
-        results = self._store.query(cypher)
+        results = self._store.query(cypher, {"repo": repo})
         if severity:
             results = [r for r in results if severity.upper() in (r.get("severity") or "").upper()]
         return results
 
-    def _get_stats(self) -> dict[str, Any]:
-        """Get graph statistics."""
-        db_stats = self._store.stats()
+    def _get_stats(self, repo: str) -> dict[str, Any]:
+        """Get graph statistics for the active repo."""
+        db_stats = self._store.stats(repo=repo)
 
-        # Additional stats
         cluster_count = self._store.query(
-            "MATCH (c:Cluster) RETURN count(c) AS count"
+            "MATCH (c:Cluster {repo: $repo}) RETURN count(c) AS count", {"repo": repo}
         )
         process_count = self._store.query(
-            "MATCH (p:Process) RETURN count(p) AS count"
+            "MATCH (p:Process {repo: $repo}) RETURN count(p) AS count", {"repo": repo}
         )
 
         return {

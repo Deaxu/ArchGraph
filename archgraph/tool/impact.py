@@ -137,52 +137,52 @@ class ImpactAnalyzer:
         }
 
     def analyze_change_impact(
-        self, changed_files: list[str]
+        self, changed_files: list[str], repo_name: str | None = None
     ) -> dict[str, Any]:
         """Analyze impact of file changes.
 
         Args:
             changed_files: List of changed file paths
+            repo_name: Optional repository name to filter results
 
         Returns:
             Dict with affected processes, clusters, and risk assessment
         """
         assert self._store is not None
 
-        # Find functions in changed files
-        funcs_cypher = (
-            "MATCH (f:Function) "
-            "WHERE f.file IN $files "
+        repo_clause = " AND f.repo = $repo" if repo_name else ""
+        params_base: dict[str, Any] = {"files": changed_files}
+        if repo_name:
+            params_base["repo"] = repo_name
+
+        changed_funcs = self._store.query(
+            f"MATCH (f:Function) WHERE f.file IN $files{repo_clause} "
             "RETURN f._id AS id, f.name AS name, f.file AS file, "
-            "f.is_input_source AS is_input, f.is_dangerous_sink AS is_sink"
+            "f.is_input_source AS is_input, f.is_dangerous_sink AS is_sink",
+            params_base,
         )
-        changed_funcs = self._store.query(funcs_cypher, {"files": changed_files})
 
-        # Find affected clusters
-        clusters_cypher = (
-            "MATCH (f:Function)-[:BELONGS_TO]->(c:Cluster) "
-            "WHERE f.file IN $files "
-            "RETURN DISTINCT c._id AS id, c.name AS name, c.cohesion AS cohesion"
+        affected_clusters = self._store.query(
+            f"MATCH (f:Function)-[:BELONGS_TO]->(c:Cluster) "
+            f"WHERE f.file IN $files{repo_clause} "
+            "RETURN DISTINCT c._id AS id, c.name AS name, c.cohesion AS cohesion",
+            params_base,
         )
-        affected_clusters = self._store.query(clusters_cypher, {"files": changed_files})
 
-        # Find affected processes
-        processes_cypher = (
-            "MATCH (f:Function)-[:PARTICIPATES_IN]->(p:Process) "
-            "WHERE f.file IN $files "
-            "RETURN DISTINCT p._id AS id, p.name AS name, p.type AS type"
+        affected_processes = self._store.query(
+            f"MATCH (f:Function)-[:PARTICIPATES_IN]->(p:Process) "
+            f"WHERE f.file IN $files{repo_clause} "
+            "RETURN DISTINCT p._id AS id, p.name AS name, p.type AS type",
+            params_base,
         )
-        affected_processes = self._store.query(processes_cypher, {"files": changed_files})
 
-        # Find potential security impact
         security_cypher = (
-            "MATCH (f:Function)-[:CALLS*1..3]->(sink:Function {is_dangerous_sink: true}) "
-            "WHERE f.file IN $files "
+            f"MATCH (f:Function)-[:CALLS*1..3]->(sink:Function {{is_dangerous_sink: true}}) "
+            f"WHERE f.file IN $files{repo_clause} "
             "RETURN DISTINCT sink._id AS id, sink.name AS sink_name"
         )
-        security_risks = self._store.query(security_cypher, {"files": changed_files})
+        security_risks = self._store.query(security_cypher, params_base)
 
-        # Risk assessment
         risk_level = self._assess_risk(changed_funcs, security_risks)
 
         return {
