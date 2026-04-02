@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
@@ -44,8 +45,13 @@ def _resolve_workers(config_workers: int) -> int:
 class GraphBuilder:
     """Orchestrates the full extraction pipeline."""
 
-    def __init__(self, config: ExtractConfig) -> None:
+    def __init__(
+        self,
+        config: ExtractConfig,
+        progress_callback: Callable[[int, int, str], None] | None = None,
+    ) -> None:
         self.config = config
+        self._progress = progress_callback or (lambda step, total, msg: None)
 
     def build(self) -> GraphData:
         """Run the extraction pipeline and return the combined graph."""
@@ -240,6 +246,7 @@ class GraphBuilder:
         total_steps = 11
 
         # Step 1: Tree-sitter structural extraction
+        self._progress(1, total_steps, "Tree-sitter extraction")
         logger.info("Step 1/%d: Tree-sitter extraction", total_steps)
         ts_extractor = TreeSitterExtractor(
             languages=self.config.languages,
@@ -255,6 +262,7 @@ class GraphBuilder:
         )
 
         # Step 2: Git history
+        self._progress(2, total_steps, "Git extraction")
         if self.config.include_git:
             logger.info("Step 2/%d: Git extraction", total_steps)
             git_extractor = GitExtractor(max_commits=self.config.git_max_commits)
@@ -269,6 +277,7 @@ class GraphBuilder:
             logger.info("Step 2/%d: Git extraction (skipped)", total_steps)
 
         # Step 3: Dependencies
+        self._progress(3, total_steps, "Dependency extraction")
         if self.config.include_deps:
             logger.info("Step 3/%d: Dependency extraction", total_steps)
             dep_extractor = DependencyExtractor()
@@ -283,6 +292,7 @@ class GraphBuilder:
             logger.info("Step 3/%d: Dependency extraction (skipped)", total_steps)
 
         # Step 4: Annotations
+        self._progress(4, total_steps, "Annotation extraction")
         if self.config.include_annotations:
             logger.info("Step 4/%d: Annotation extraction", total_steps)
             ann_extractor = AnnotationExtractor()
@@ -297,6 +307,7 @@ class GraphBuilder:
             logger.info("Step 4/%d: Annotation extraction (skipped)", total_steps)
 
         # Step 4.5: Call resolution (SCIP + heuristic fallback)
+        self._progress(5, total_steps, "Call resolution (SCIP)" if self.config.include_scip else "Call resolution (heuristic)")
         if self.config.include_scip:
             logger.info("Step 4.5/%d: Call resolution (SCIP + heuristic)", total_steps)
             ScipResolver(graph, repo, self.config.languages).resolve()
@@ -306,6 +317,7 @@ class GraphBuilder:
             CallResolver(graph).resolve()
 
         # Step 5: Security labeling
+        self._progress(6, total_steps, "Security labeling")
         if self.config.include_security_labels:
             logger.info("Step 5/%d: Security labeling", total_steps)
             labeler = SecurityLabeler()
@@ -315,6 +327,7 @@ class GraphBuilder:
             logger.info("Step 5/%d: Security labeling (skipped)", total_steps)
 
         # Step 6: Clang deep analysis
+        self._progress(7, total_steps, "Clang deep analysis")
         if self.config.include_clang:
             clang_ext = ClangExtractor(
                 compile_commands=self.config.clang_compile_commands,
@@ -338,6 +351,7 @@ class GraphBuilder:
             logger.info("Step 6/%d: Clang deep analysis (skipped)", total_steps)
 
         # Step 7: Tree-sitter deep analysis (Rust, Java, Go, Kotlin, Swift)
+        self._progress(8, total_steps, "Tree-sitter deep analysis")
         if self.config.include_deep:
             from archgraph.extractors.deep import TreeSitterDeepExtractor
 
@@ -364,6 +378,7 @@ class GraphBuilder:
             logger.info("Step 7/%d: Tree-sitter deep analysis (skipped)", total_steps)
 
         # Step 8: Churn enrichment
+        self._progress(9, total_steps, "Churn enrichment")
         if self.config.include_git:
             logger.info("Step 8/%d: Churn enrichment", total_steps)
             enricher = ChurnEnricher()
@@ -373,6 +388,7 @@ class GraphBuilder:
             logger.info("Step 8/%d: Churn enrichment (skipped)", total_steps)
 
         # Step 9: CVE enrichment
+        self._progress(10, total_steps, "CVE enrichment")
         if self.config.include_cve:
             logger.info("Step 9/%d: CVE enrichment", total_steps)
             cve_enricher = CveEnricher(batch_size=self.config.osv_batch_size)
@@ -382,6 +398,7 @@ class GraphBuilder:
             logger.info("Step 9/%d: CVE enrichment (skipped)", total_steps)
 
         # Step 10: Clustering
+        self._progress(11, total_steps, "Clustering")
         if self.config.include_clustering:
             logger.info("Step 10/%d: Clustering", total_steps)
             cluster_enricher = ClusterEnricher()
@@ -391,6 +408,7 @@ class GraphBuilder:
             logger.info("Step 10/%d: Clustering (skipped)", total_steps)
 
         # Step 11: Process tracing
+        self._progress(12, total_steps, "Process tracing")
         if self.config.include_process:
             logger.info("Step 11/%d: Process tracing", total_steps)
             process_tracer = ProcessTracer()

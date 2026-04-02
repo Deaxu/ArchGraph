@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -416,11 +417,8 @@ class ArchGraphMCP:
                     result = {"error": f"Symbol not found or has no body: {symbol_id}"}
 
             elif name == "extract":
-                result = await asyncio.to_thread(self._handle_extract_sync, arguments)
-                if isinstance(result, dict) and result.get("status") == "success":
-                    repo_name = result.get("repo_name")
-                    if repo_name:
-                        self._current_repo = repo_name
+                # Handled directly in call_tool() for progress notifications
+                result = {"error": "extract must be called via MCP call_tool handler"}
 
             elif name == "search":
                 result = self._handle_search(arguments)
@@ -485,7 +483,11 @@ class ArchGraphMCP:
             raise ValueError("No active repo. Call use_repo first.")
         return self._current_repo
 
-    def _handle_extract_sync(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    def _handle_extract_sync(
+        self,
+        arguments: dict[str, Any],
+        progress_fn: Callable[[int, int, str], None] | None = None,
+    ) -> dict[str, Any]:
         """Handle extract tool — clone, detect, SCIP index, import.
 
         Runs in a worker thread via ``asyncio.to_thread`` so the MCP event
@@ -541,7 +543,7 @@ class ArchGraphMCP:
             # Extract
             logger.info("MCP extract started: %s (%s)", resolved_path, langs)
             start = time.time()
-            builder = GraphBuilder(config)
+            builder = GraphBuilder(config, progress_callback=progress_fn)
             graph = builder.build()
             build_time = time.time() - start
             logger.info("MCP extract done in %.1fs: %d nodes, %d edges",
@@ -549,6 +551,8 @@ class ArchGraphMCP:
 
             # Clear and import
             repo_name = resolved_path.name
+            if progress_fn:
+                progress_fn(13, 14, "Importing into Neo4j")
             if clear_db:
                 self._store.clear_repo(repo_name)
             self._store.create_indexes()
@@ -940,7 +944,33 @@ async def run_mcp_server(**kwargs: Any) -> None:
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]) -> list[types.TextContent]:
-        result = await arch.handle_tool_call(name, arguments)
+        if name == "extract":
+            # Build progress bridge: thread-safe callback → async log message
+            loop = asyncio.get_running_loop()
+            try:
+                ctx = server.request_context
+                session = ctx.session
+
+                def progress_fn(step: int, total: int, msg: str) -> None:
+                    asyncio.run_coroutine_threadsafe(
+                        session.send_log_message(
+                            "info", f"[{step}/{total}] {msg}", logger="archgraph"
+                        ),
+                        loop,
+                    )
+
+            except LookupError:
+                progress_fn = None  # type: ignore[assignment]
+
+            result = await asyncio.to_thread(
+                arch._handle_extract_sync, arguments, progress_fn
+            )
+            if isinstance(result, dict) and result.get("status") == "success":
+                repo_name = result.get("repo_name")
+                if repo_name:
+                    arch._current_repo = repo_name
+        else:
+            result = await arch.handle_tool_call(name, arguments)
         return [types.TextContent(type="text", text=json.dumps(result, indent=2))]
 
     @server.list_resources()
