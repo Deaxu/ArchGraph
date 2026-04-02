@@ -655,6 +655,7 @@ class ArchGraphMCP:
         """Handle repos tool — list extracted repositories."""
         try:
             registry = get_registry()
+            registry._load()  # reload from disk
             entries = registry.list_repos()
             return [{**e.to_dict(), "active": e.name == self._current_repo} for e in entries]
         except Exception:
@@ -672,6 +673,7 @@ class ArchGraphMCP:
         if not name:
             return {"error": "name is required"}
         registry = get_registry()
+        registry._load()  # reload from disk — picks up CLI-extracted repos
         entry = registry.get(name)
         if entry is None:
             available = [e.name for e in registry.list_repos()]
