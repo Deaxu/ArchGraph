@@ -33,6 +33,7 @@ _INDEXES: list[tuple[str, list[str]]] = [
     (NodeLabel.VULNERABILITY, ["vuln_id"]),
     (NodeLabel.CLUSTER, ["name"]),
     (NodeLabel.PROCESS, ["name"]),
+    ("_Node", ["repo"]),
 ]
 
 
@@ -138,23 +139,42 @@ class Neo4jStore:
                 logger.debug("Deleted batch of %d nodes", deleted)
             logger.info("Cleared all graph data")
 
+    def clear_repo(self, repo_name: str) -> None:
+        """Delete all nodes for a specific repo. Safer than clear()."""
+        with self._session() as session:
+            while True:
+                result = session.run(
+                    "MATCH (n:_Node {repo: $repo}) "
+                    "WITH n LIMIT 10000 DETACH DELETE n "
+                    "RETURN count(*) AS deleted",
+                    repo=repo_name,
+                )
+                deleted = result.single()["deleted"]
+                if deleted == 0:
+                    break
+                logger.debug("Deleted batch of %d nodes for repo %s", deleted, repo_name)
+        logger.info("Cleared graph data for repo: %s", repo_name)
+
     def import_graph(
-        self, graph: GraphData, *, use_create: bool = False,
+        self, graph: GraphData, *, repo_name: str = "", use_create: bool = False,
     ) -> dict[str, int]:
         """Bulk import nodes and edges into Neo4j. Returns counts.
 
         Args:
+            repo_name: Repository name tag written to every node's ``repo`` property.
             use_create: Use CREATE instead of MERGE. Much faster when the
                         database has been cleared beforehand.
         """
         if self._detect_apoc():
-            return self._import_graph_apoc(graph)
+            return self._import_graph_apoc(graph, repo_name=repo_name)
 
-        node_count = self._import_nodes(graph.nodes, use_create=use_create)
+        node_count = self._import_nodes(graph.nodes, repo_name=repo_name, use_create=use_create)
         edge_count = self._import_edges(graph.edges, use_create=use_create)
         return {"nodes_imported": node_count, "edges_imported": edge_count}
 
-    def _import_nodes(self, nodes: list[Node], *, use_create: bool = False) -> int:
+    def _import_nodes(
+        self, nodes: list[Node], *, repo_name: str = "", use_create: bool = False
+    ) -> int:
         """Batch-import nodes."""
         if not nodes:
             return 0
@@ -173,6 +193,8 @@ class Neo4jStore:
                     for node in batch:
                         props = dict(node.properties)
                         props["_id"] = node.id
+                        if repo_name:
+                            props["repo"] = repo_name
                         records.append(props)
 
                     if use_create:
@@ -229,28 +251,25 @@ class Neo4jStore:
             logger.debug("Imported %d %s edges", len(type_edges), rel_type)
             return count
 
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        # Import edge types sequentially to avoid Neo4j deadlocks.
+        # Different edge types often touch the same nodes, causing
+        # DeadlockDetected errors when run in parallel sessions.
         total = 0
-        with ThreadPoolExecutor(max_workers=min(len(by_type), 4)) as pool:
-            futures = {
-                pool.submit(_import_edge_type, rt, edges_list): rt
-                for rt, edges_list in by_type.items()
-            }
-            for f in as_completed(futures):
-                total += f.result()
+        for rt, edges_list in by_type.items():
+            total += _import_edge_type(rt, edges_list)
 
         logger.info("Imported %d edges total", total)
         return total
 
     # ── APOC Import (optimized path) ───────────────────────────────────────
 
-    def _import_graph_apoc(self, graph: GraphData) -> dict[str, int]:
+    def _import_graph_apoc(self, graph: GraphData, *, repo_name: str = "") -> dict[str, int]:
         """Import graph using APOC procedures for better performance."""
-        node_count = self._import_nodes_apoc(graph.nodes)
+        node_count = self._import_nodes_apoc(graph.nodes, repo_name=repo_name)
         edge_count = self._import_edges_apoc(graph.edges)
         return {"nodes_imported": node_count, "edges_imported": edge_count}
 
-    def _import_nodes_apoc(self, nodes: list[Node]) -> int:
+    def _import_nodes_apoc(self, nodes: list[Node], *, repo_name: str = "") -> int:
         """APOC-based parallel node import."""
         if not nodes:
             return 0
@@ -266,6 +285,8 @@ class Neo4jStore:
                 for node in label_nodes:
                     props = dict(node.properties)
                     props["_id"] = node.id
+                    if repo_name:
+                        props["repo"] = repo_name
                     records.append(props)
 
                 session.run(
@@ -402,20 +423,19 @@ class Neo4jStore:
             result = session.run(cypher, parameters=params or {})
             return [record.data() for record in result]
 
-    def get_source(self, symbol_id: str) -> dict[str, Any] | None:
-        """Get source code for a symbol by its node ID.
-
-        Returns dict with body, name, file, line_start, line_end, body_lines,
-        body_truncated — or None if the symbol is not found or has no body.
-        """
+    def get_source(self, symbol_id: str, repo: str | None = None) -> dict[str, Any] | None:
+        """Get source code for a symbol by its node ID."""
+        repo_clause = " AND n.repo = $repo" if repo else ""
+        params: dict[str, Any] = {"id": symbol_id}
+        if repo:
+            params["repo"] = repo
         results = self.query(
-            "MATCH (n:_Node {_id: $id}) "
-            "WHERE n.body IS NOT NULL "
+            f"MATCH (n:_Node {{_id: $id}}) WHERE n.body IS NOT NULL{repo_clause} "
             "RETURN n._id AS id, n.name AS name, n.file AS file, "
             "n.body AS body, n.body_lines AS body_lines, "
             "n.body_truncated AS body_truncated, "
             "n.line_start AS line_start, n.line_end AS line_end",
-            {"id": symbol_id},
+            params,
         )
         return results[0] if results else None
 
@@ -437,22 +457,26 @@ class Neo4jStore:
             "property_keys": prop_keys,
         }
 
-    def stats(self) -> dict[str, Any]:
-        """Return node and edge counts per type."""
+    def stats(self, repo: str | None = None) -> dict[str, Any]:
+        """Return node and edge counts per type, optionally filtered by repo."""
+        repo_filter = " {repo: $repo}" if repo else ""
+        params: dict[str, Any] = {"repo": repo} if repo else {}
         with self._session() as session:
             node_result = session.run(
-                "MATCH (n) "
+                f"MATCH (n:_Node{repo_filter}) "
                 "WITH labels(n) AS lbls, count(*) AS cnt "
                 "UNWIND lbls AS lbl "
                 "RETURN lbl, sum(cnt) AS count "
-                "ORDER BY count DESC"
+                "ORDER BY count DESC",
+                **params,
             )
             node_counts = {r["lbl"]: r["count"] for r in node_result}
 
             edge_result = session.run(
-                "MATCH ()-[r]->() "
+                f"MATCH (a:_Node{repo_filter})-[r]->() "
                 "RETURN type(r) AS type, count(*) AS count "
-                "ORDER BY count DESC"
+                "ORDER BY count DESC",
+                **params,
             )
             edge_counts = {r["type"]: r["count"] for r in edge_result}
 
