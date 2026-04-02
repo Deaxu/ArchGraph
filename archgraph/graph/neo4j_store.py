@@ -156,7 +156,7 @@ class Neo4jStore:
         logger.info("Cleared graph data for repo: %s", repo_name)
 
     def import_graph(
-        self, graph: GraphData, *, repo_name: str = "", use_create: bool = False,
+        self, graph: GraphData, *, repo_name: str | None = None, use_create: bool = False,
     ) -> dict[str, int]:
         """Bulk import nodes and edges into Neo4j. Returns counts.
 
@@ -173,7 +173,7 @@ class Neo4jStore:
         return {"nodes_imported": node_count, "edges_imported": edge_count}
 
     def _import_nodes(
-        self, nodes: list[Node], *, repo_name: str = "", use_create: bool = False
+        self, nodes: list[Node], *, repo_name: str | None = None, use_create: bool = False
     ) -> int:
         """Batch-import nodes."""
         if not nodes:
@@ -193,7 +193,7 @@ class Neo4jStore:
                     for node in batch:
                         props = dict(node.properties)
                         props["_id"] = node.id
-                        if repo_name:
+                        if repo_name is not None:
                             props["repo"] = repo_name
                         records.append(props)
 
@@ -263,13 +263,13 @@ class Neo4jStore:
 
     # ── APOC Import (optimized path) ───────────────────────────────────────
 
-    def _import_graph_apoc(self, graph: GraphData, *, repo_name: str = "") -> dict[str, int]:
+    def _import_graph_apoc(self, graph: GraphData, *, repo_name: str | None = None) -> dict[str, int]:
         """Import graph using APOC procedures for better performance."""
         node_count = self._import_nodes_apoc(graph.nodes, repo_name=repo_name)
         edge_count = self._import_edges_apoc(graph.edges)
         return {"nodes_imported": node_count, "edges_imported": edge_count}
 
-    def _import_nodes_apoc(self, nodes: list[Node], *, repo_name: str = "") -> int:
+    def _import_nodes_apoc(self, nodes: list[Node], *, repo_name: str | None = None) -> int:
         """APOC-based parallel node import."""
         if not nodes:
             return 0
@@ -285,7 +285,7 @@ class Neo4jStore:
                 for node in label_nodes:
                     props = dict(node.properties)
                     props["_id"] = node.id
-                    if repo_name:
+                    if repo_name is not None:
                         props["repo"] = repo_name
                     records.append(props)
 
