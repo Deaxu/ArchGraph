@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from archgraph.graph.neo4j_store import Neo4jStore
+from archgraph.registry import get_registry
 from archgraph.tool.impact import ImpactAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -203,6 +204,25 @@ TOOLS = [
         },
     },
     {
+        "name": "use_repo",
+        "description": (
+            "Set the active repository for all subsequent queries. "
+            "Must be called before using search, context, impact, source, stats, "
+            "detect_changes, query, or cypher. "
+            "Use repos() to list available repository names."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Repository name as shown in repos() (e.g. 'fastify')",
+                },
+            },
+            "required": ["name"],
+        },
+    },
+    {
         "name": "search_calls",
         "description": (
             "Search call relationships between functions. Find who calls a function "
@@ -276,8 +296,6 @@ RESOURCES = [
 
 
 import hashlib
-import time
-from functools import lru_cache
 
 class _ToolCache:
     """Simple TTL cache for MCP tool results."""
@@ -321,6 +339,7 @@ class ArchGraphMCP:
         self._store = Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database)
         self._impact = ImpactAnalyzer(self._store)
         self._cache = _ToolCache(ttl=60)
+        self._current_repo: str | None = None
 
     def connect(self) -> None:
         self._store.connect()
@@ -331,11 +350,20 @@ class ArchGraphMCP:
     async def handle_tool_call(self, name: str, arguments: dict[str, Any]) -> Any:
         """Handle an MCP tool call."""
         # Check cache
+        cache_arguments = {**arguments, "__repo": self._current_repo}
         if name not in ("detect_changes",):
-            cached = self._cache.get(name, arguments)
+            cached = self._cache.get(name, cache_arguments)
             if cached is not None:
                 return cached
         
+        # Tools that require an active repo to be set
+        _REPO_REQUIRED_TOOLS = {
+            "search", "context", "impact", "source", "stats",
+            "detect_changes", "query", "cypher", "search_calls",
+        }
+        if name in _REPO_REQUIRED_TOOLS and self._current_repo is None:
+            return {"error": f"No active repository. Call use_repo first to select a repository."}
+
         result = None
         try:
             if name == "query" or name == "cypher":
@@ -371,7 +399,7 @@ class ArchGraphMCP:
                     result = {"error": f"Symbol not found or has no body: {symbol_id}"}
 
             elif name == "extract":
-                result = await self._handle_extract(arguments)
+                result = await asyncio.to_thread(self._handle_extract_sync, arguments)
 
             elif name == "search":
                 result = self._handle_search(arguments)
@@ -382,6 +410,9 @@ class ArchGraphMCP:
             elif name == "search_calls":
                 result = self._handle_search_calls(arguments)
 
+            elif name == "use_repo":
+                result = self._handle_use_repo(arguments)
+
             else:
                 result = {"error": f"Unknown tool: {name}"}
 
@@ -390,8 +421,8 @@ class ArchGraphMCP:
             result = {"error": str(e)}
         
         # Cache successful results
-        if result is not None and not isinstance(result, dict) or "error" not in result:
-            self._cache.set(name, arguments, result)
+        if result is not None and (not isinstance(result, dict) or "error" not in result):
+            self._cache.set(name, cache_arguments, result)
         
         return result
 
@@ -425,8 +456,12 @@ class ArchGraphMCP:
 
     # ── New tool handlers ───────────────────────────────────────────────
 
-    async def _handle_extract(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Handle extract tool — clone, detect, SCIP index, import."""
+    def _handle_extract_sync(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Handle extract tool — clone, detect, SCIP index, import.
+
+        Runs in a worker thread via ``asyncio.to_thread`` so the MCP event
+        loop stays responsive while extraction is in progress.
+        """
         import shutil
         import subprocess
         import tempfile
@@ -475,17 +510,22 @@ class ArchGraphMCP:
             )
 
             # Extract
+            logger.info("MCP extract started: %s (%s)", resolved_path, langs)
             start = time.time()
             builder = GraphBuilder(config)
             graph = builder.build()
             build_time = time.time() - start
+            logger.info("MCP extract done in %.1fs: %d nodes, %d edges",
+                        build_time, graph.node_count, graph.edge_count)
 
             # Clear and import
+            repo_name = resolved_path.name
             if clear_db:
-                self._store.clear()
+                self._store.clear_repo(repo_name)
             self._store.create_indexes()
             import_start = time.time()
-            import_result = self._store.import_graph(graph)
+            import_result = self._store.import_graph(graph, repo_name=repo_name)
+            self._current_repo = repo_name
             import_time = time.time() - import_start
 
             # Register in registry
@@ -545,8 +585,9 @@ class ArchGraphMCP:
         params: dict[str, Any] = {}
 
         if sym_type:
-            label = type_map.get(sym_type.lower(), sym_type)
-            # Use label in MATCH clause
+            label = type_map.get(sym_type.lower())
+            if label is None:
+                return [{"error": f"Unknown type: {sym_type}"}]
             cypher_label = f":{label}"
         else:
             cypher_label = ":_Node"
@@ -583,10 +624,9 @@ class ArchGraphMCP:
     def _handle_repos(self) -> list[dict[str, Any]]:
         """Handle repos tool — list extracted repositories."""
         try:
-            from archgraph.registry import get_registry
             registry = get_registry()
             entries = registry.list_repos()
-            return [e.to_dict() for e in entries]
+            return [{**e.to_dict(), "active": e.name == self._current_repo} for e in entries]
         except Exception:
             # Fallback: get info from Neo4j
             files = self._store.query(
@@ -595,6 +635,25 @@ class ArchGraphMCP:
                 "ORDER BY file_count DESC LIMIT 10"
             )
             return files
+
+    def _handle_use_repo(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Set the active repository for subsequent tool calls."""
+        name = arguments.get("name", "").strip()
+        if not name:
+            return {"error": "name is required"}
+        entry = get_registry().get(name)
+        if entry is None:
+            available = [e.name for e in get_registry().list_repos()]
+            return {
+                "error": f"Repository {name!r} not found. Available: {available}",
+            }
+        self._current_repo = name
+        return {
+            "active_repo": name,
+            "node_count": entry.node_count,
+            "edge_count": entry.edge_count,
+            "path": entry.path,
+        }
 
     def _handle_search_calls(self, arguments: dict[str, Any]) -> list[dict[str, Any]]:
         """Handle search_calls tool — find call relationships."""
@@ -613,10 +672,15 @@ class ArchGraphMCP:
         elif source_filter == "heuristic":
             source_clause = "r.source = 'heuristic'"
 
+        # Clamp depth to prevent runaway traversals
+        max_depth = max(1, min(int(max_depth), 10))
+
         if max_depth > 1:
             # Transitive call chain
+            # Neo4j requires literal integers in variable-length patterns,
+            # so we interpolate max_depth directly (validated above).
             conditions = []
-            params: dict[str, Any] = {"limit": limit, "depth": max_depth}
+            params: dict[str, Any] = {"limit": limit}
 
             path_filters: list[str] = []
             if resolved_only:
@@ -643,7 +707,7 @@ class ArchGraphMCP:
 
             where = " AND ".join(conditions) if conditions else "true"
             cypher = (
-                f"MATCH path = (src:Function)-[:CALLS*1..$depth]->(dst:Function) "
+                f"MATCH path = (src:Function)-[:CALLS*1..{max_depth}]->(dst:Function) "
                 f"WHERE {where} AND {path_filter} "
                 f"RETURN src.name AS caller, src.file AS caller_file, "
                 f"dst.name AS target, dst.file AS target_file, "
