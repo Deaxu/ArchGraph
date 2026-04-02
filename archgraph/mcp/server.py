@@ -355,16 +355,16 @@ class ArchGraphMCP:
 
     async def handle_tool_call(self, name: str, arguments: dict[str, Any]) -> Any:
         """Handle an MCP tool call."""
-        # Check cache
-        cache_arguments = {**arguments, "__repo": self._current_repo}
-        if name not in ("detect_changes",):
-            cached = self._cache.get(name, cache_arguments)
-            if cached is not None:
-                return cached
-        
         # Tools that require an active repo to be set
         if name in _REPO_REQUIRED_TOOLS and self._current_repo is None:
             return {"error": "No active repository. Call use_repo first to select a repository."}
+
+        # Check cache
+        if name not in ("detect_changes",):
+            cache_arguments = {**arguments, "__repo": self._current_repo}
+            cached = self._cache.get(name, cache_arguments)
+            if cached is not None:
+                return cached
 
         result = None
         try:
@@ -417,7 +417,9 @@ class ArchGraphMCP:
             elif name == "extract":
                 result = await asyncio.to_thread(self._handle_extract_sync, arguments)
                 if isinstance(result, dict) and result.get("status") == "success":
-                    self._current_repo = result.get("repo_name") or Path(arguments.get("repo", "")).name
+                    repo_name = result.get("repo_name")
+                    if repo_name:
+                        self._current_repo = repo_name
 
             elif name == "search":
                 result = self._handle_search(arguments)
@@ -439,8 +441,10 @@ class ArchGraphMCP:
             result = {"error": str(e)}
         
         # Cache successful results
-        if result is not None and (not isinstance(result, dict) or "error" not in result):
-            self._cache.set(name, cache_arguments, result)
+        if name not in ("detect_changes",) and result is not None and (
+            not isinstance(result, dict) or "error" not in result
+        ):
+            self._cache.set(name, {**arguments, "__repo": self._current_repo}, result)
         
         return result
 
@@ -791,31 +795,35 @@ class ArchGraphMCP:
         # Get callers (upstream)
         callers = self._store.query(
             "MATCH (f:Function)-[c:CALLS]->(n:_Node {_id: $id}) "
+            "WHERE f.repo = $repo "
             "RETURN f._id AS id, f.name AS name, f.file AS file, "
             "c.resolved AS resolved, c.source AS source",
-            {"id": symbol_id},
+            {"id": symbol_id, "repo": repo},
         )
 
         # Get callees (downstream)
         callees = self._store.query(
             "MATCH (n:_Node {_id: $id})-[c:CALLS]->(f:Function) "
+            "WHERE f.repo = $repo "
             "RETURN f._id AS id, f.name AS name, f.file AS file, "
             "c.resolved AS resolved, c.source AS source",
-            {"id": symbol_id},
+            {"id": symbol_id, "repo": repo},
         )
 
         # Get cluster membership
         cluster = self._store.query(
             "MATCH (n:_Node {_id: $id})-[:BELONGS_TO]->(c:Cluster) "
+            "WHERE c.repo = $repo "
             "RETURN c._id AS id, c.name AS name, c.cohesion AS cohesion",
-            {"id": symbol_id},
+            {"id": symbol_id, "repo": repo},
         )
 
         # Get process participation
         processes = self._store.query(
             "MATCH (n:_Node {_id: $id})-[:PARTICIPATES_IN]->(p:Process) "
+            "WHERE p.repo = $repo "
             "RETURN p._id AS id, p.name AS name, p.type AS type",
-            {"id": symbol_id},
+            {"id": symbol_id, "repo": repo},
         )
 
         # Security labels

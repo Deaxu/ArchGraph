@@ -18,6 +18,13 @@ def _make_mcp() -> ArchGraphMCP:
 
 class TestCurrentRepoState:
 
+    def test_initial_current_repo_is_none(self) -> None:
+        """ArchGraphMCP.__init__ sets _current_repo to None."""
+        with patch("archgraph.mcp.server.Neo4jStore"), \
+             patch("archgraph.mcp.server.ImpactAnalyzer"):
+            mcp = ArchGraphMCP()
+        assert mcp._current_repo is None
+
     @pytest.mark.asyncio
     async def test_use_repo_sets_current_repo(self) -> None:
         mcp = _make_mcp()
