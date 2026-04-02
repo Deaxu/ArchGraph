@@ -239,7 +239,7 @@ def extract(
             try:
                 from archgraph.skills import SkillGenerator
                 with Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database) as store:
-                    store.import_graph(graph)
+                    store.import_graph(graph, repo_name=resolved_path.name)
                     gen = SkillGenerator(store)
                     gen.generate_skills(resolved_path)
                     console.print("[green]Agent skills generated.[/green]")
@@ -259,13 +259,13 @@ def extract(
             with Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database) as store:
                 if clear_db:
                     console.print("[yellow]Clearing existing data...[/yellow]")
-                    store.clear()
+                    store.clear_repo(resolved_path.name)
                     delete_manifest(resolved_path)
                     console.print("[yellow]Manifest cleared.[/yellow]")
 
                 store.create_indexes()
                 import_start = time.time()
-                result = store.import_graph(graph, use_create=clear_db)
+                result = store.import_graph(graph, repo_name=resolved_path.name, use_create=clear_db)
                 import_time = time.time() - import_start
 
                 console.print(

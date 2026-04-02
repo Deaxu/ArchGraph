@@ -128,10 +128,10 @@ class ArchGraph:
 
             store = self._get_store()
             if clear_db:
-                store.clear()
+                store.clear_repo(resolved_path.name)
             store.create_indexes()
             import_start = time.time()
-            import_result = store.import_graph(graph)
+            import_result = store.import_graph(graph, repo_name=resolved_path.name)
             import_time = time.time() - import_start
 
             try:
