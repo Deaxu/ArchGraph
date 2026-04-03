@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -e ".[dev,clang]"
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  test-all-extras:
+    name: Test all extras
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install all extras
+        run: pip install -e ".[all,dev]"
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+      - name: Check no unexpected failures
+        run: |
+          result=$(pytest tests/ -q --tb=no 2>&1 | tail -1)
+          echo "$result"
+          if echo "$result" | grep -q "failed"; then
+            exit 1
+          fi
