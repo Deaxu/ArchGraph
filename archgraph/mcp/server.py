@@ -184,6 +184,12 @@ TOOLS = [
                         "Enable execution flow tracing from entry points (default: false)"
                     ),
                 },
+                "include_scip": {
+                    "type": "boolean",
+                    "description": (
+                        "Enable SCIP compiler-backed call resolution (default: true)"
+                    ),
+                },
             },
             "required": ["repo"],
         },
@@ -559,6 +565,7 @@ class ArchGraphMCP:
                 neo4j_database=self._store._database,
                 include_body=True,
                 include_deep=arguments.get("include_deep", True),
+                include_scip=arguments.get("include_scip", True),
                 include_cve=arguments.get("include_cve", False),
                 include_clustering=arguments.get("include_clustering", False),
                 include_process=arguments.get("include_process", False),
