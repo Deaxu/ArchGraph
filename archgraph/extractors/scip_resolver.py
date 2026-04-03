@@ -688,7 +688,8 @@ class ClangScipIndexer:
         return output_path if output_path.exists() else None
 
     def _find_or_generate_compdb(self, repo_path: Path) -> Path | None:
-        """Find compile_commands.json or try to generate one with cmake."""
+        """Find compile_commands.json or generate one via cmake/bear/compiledb."""
+        # 1. Check common locations for existing compdb
         for candidate in [
             repo_path / "compile_commands.json",
             repo_path / "build" / "compile_commands.json",
@@ -699,12 +700,47 @@ class ClangScipIndexer:
             if candidate.exists():
                 return candidate
 
-        if (repo_path / "CMakeLists.txt").exists() and shutil.which("cmake"):
-            return self._generate_compdb_cmake(repo_path)
+        output = repo_path / ".archgraph" / "compile_commands.json"
+        output.parent.mkdir(parents=True, exist_ok=True)
 
+        # 2. CMakeLists.txt → cmake
+        if (repo_path / "CMakeLists.txt").exists() and shutil.which("cmake"):
+            result = self._generate_compdb_cmake(repo_path, output)
+            if result:
+                return result
+
+        # 3. Makefile → bear (intercepts any build system)
+        has_makefile = (
+            (repo_path / "Makefile").exists()
+            or (repo_path / "makefile").exists()
+            or (repo_path / "GNUmakefile").exists()
+        )
+        if has_makefile:
+            if shutil.which("bear"):
+                result = self._generate_compdb_bear(repo_path, output)
+                if result:
+                    return result
+            if shutil.which("compiledb"):
+                result = self._generate_compdb_compiledb(repo_path, output)
+                if result:
+                    return result
+
+        # 4. configure script → run configure first, then bear make
+        if (repo_path / "configure").exists() and shutil.which("bear"):
+            result = self._generate_compdb_autotools(repo_path, output)
+            if result:
+                return result
+
+        if not has_makefile and not (repo_path / "CMakeLists.txt").exists():
+            logger.info(
+                "No build system detected (CMakeLists.txt, Makefile, configure). "
+                "scip-clang requires a compilation database."
+            )
         return None
 
-    def _generate_compdb_cmake(self, repo_path: Path) -> Path | None:
+    def _generate_compdb_cmake(
+        self, repo_path: Path, output: Path,
+    ) -> Path | None:
         """Generate compile_commands.json using cmake."""
         build_dir = repo_path / ".archgraph" / "cmake_build"
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -731,6 +767,79 @@ class ClangScipIndexer:
         except subprocess.TimeoutExpired:
             logger.warning("cmake timed out generating compile_commands.json")
         return None
+
+    def _generate_compdb_bear(
+        self, repo_path: Path, output: Path,
+    ) -> Path | None:
+        """Generate compile_commands.json using bear (intercepts make)."""
+        logger.info("Generating compile_commands.json with bear...")
+        try:
+            result = subprocess.run(
+                ["bear", "--output", str(output), "--", "make", "-j4"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=300,
+            )
+            if result.returncode == 0 and output.exists():
+                return output
+            # bear may fail if make fails, but compdb may still be generated
+            if output.exists():
+                return output
+            logger.warning("bear failed: %s", result.stderr[:300])
+        except subprocess.TimeoutExpired:
+            logger.warning("bear timed out")
+            if output.exists():
+                return output
+        return None
+
+    def _generate_compdb_compiledb(
+        self, repo_path: Path, output: Path,
+    ) -> Path | None:
+        """Generate compile_commands.json using compiledb (parses make -n)."""
+        logger.info("Generating compile_commands.json with compiledb...")
+        try:
+            result = subprocess.run(
+                ["compiledb", "-o", str(output), "make", "-n"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
+            )
+            if output.exists():
+                return output
+            logger.warning("compiledb failed: %s", result.stderr[:300])
+        except subprocess.TimeoutExpired:
+            logger.warning("compiledb timed out")
+        return None
+
+    def _generate_compdb_autotools(
+        self, repo_path: Path, output: Path,
+    ) -> Path | None:
+        """Generate compile_commands.json for autotools (configure + bear make)."""
+        logger.info("Running ./configure for autotools project...")
+        try:
+            result = subprocess.run(
+                ["./configure"],
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=180,
+            )
+            if result.returncode != 0:
+                logger.warning("./configure failed: %s", result.stderr[:300])
+                return None
+        except subprocess.TimeoutExpired:
+            logger.warning("./configure timed out")
+            return None
+
+        return self._generate_compdb_bear(repo_path, output)
 
     def _download_binary(self) -> bool:
         """Try to download scip-clang binary from GitHub releases."""
