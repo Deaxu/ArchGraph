@@ -22,14 +22,18 @@ from archgraph.extractors.deep.engine import analyze_function
 from archgraph.extractors.deep.lang_spec import REGISTRY, LangSpec
 from archgraph.graph.schema import GraphData
 
-# Import language specs to trigger registration
+# Import language specs to trigger registration.
+# Core languages — tree-sitter grammars are required dependencies.
 from archgraph.extractors.deep import rust as _rust  # noqa: F401
 from archgraph.extractors.deep import java as _java  # noqa: F401
 from archgraph.extractors.deep import go as _go  # noqa: F401
+from archgraph.extractors.deep import javascript as _javascript  # noqa: F401
+from archgraph.extractors.deep import typescript as _typescript  # noqa: F401
+from archgraph.extractors.deep import python_spec as _python_spec  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-# Try optional languages
+# Optional languages — grammars installed via extras (pip install archgraph[kotlin] etc.)
 try:
     from archgraph.extractors.deep import kotlin as _kotlin  # noqa: F401
 except Exception:
@@ -37,21 +41,6 @@ except Exception:
 
 try:
     from archgraph.extractors.deep import swift as _swift  # noqa: F401
-except Exception:
-    pass
-
-try:
-    from archgraph.extractors.deep import javascript as _javascript  # noqa: F401
-except Exception:
-    pass
-
-try:
-    from archgraph.extractors.deep import typescript as _typescript  # noqa: F401
-except Exception:
-    pass
-
-try:
-    from archgraph.extractors.deep import python_spec as _python_spec  # noqa: F401
 except Exception:
     pass
 

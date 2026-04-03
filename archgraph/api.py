@@ -67,10 +67,16 @@ class ArchGraph:
         self,
         repo: str,
         languages: str = "auto",
-        clear_db: bool = True,
+        clear_db: bool = False,
         include_body: bool = True,
         include_git: bool = True,
         include_deps: bool = True,
+        include_deep: bool = True,
+        include_clang: bool = False,
+        include_cve: bool = False,
+        include_scip: bool = True,
+        include_clustering: bool = False,
+        include_process: bool = False,
     ) -> dict[str, Any]:
         """Extract code graph from a repository.
 
@@ -81,6 +87,12 @@ class ArchGraph:
             include_body: Store source code bodies in graph nodes.
             include_git: Include git history extraction.
             include_deps: Include dependency extraction.
+            include_deep: Enable CFG, data flow, and taint analysis.
+            include_clang: Enable libclang deep analysis for C/C++.
+            include_cve: Enable CVE vulnerability scanning via OSV API.
+            include_scip: Enable SCIP compiler-backed call resolution.
+            include_clustering: Enable community detection on function graph.
+            include_process: Enable execution flow tracing from entry points.
 
         Returns:
             Dict with extraction results: nodes, edges, resolved_calls, time, etc.
@@ -119,6 +131,12 @@ class ArchGraph:
                 include_body=include_body,
                 include_git=include_git,
                 include_deps=include_deps,
+                include_deep=include_deep,
+                include_clang=include_clang,
+                include_cve=include_cve,
+                include_scip=include_scip,
+                include_clustering=include_clustering,
+                include_process=include_process,
             )
 
             start = time.time()

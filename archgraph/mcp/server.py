@@ -164,6 +164,26 @@ TOOLS = [
                     "type": "boolean",
                     "description": "Clear existing graph data before import (default: true)",
                 },
+                "include_deep": {
+                    "type": "boolean",
+                    "description": (
+                        "Enable CFG, data flow, and taint analysis (default: true)"
+                    ),
+                },
+                "include_cve": {
+                    "type": "boolean",
+                    "description": "Enable CVE vulnerability scanning via OSV API (default: false)",
+                },
+                "include_clustering": {
+                    "type": "boolean",
+                    "description": "Enable community detection on function graph (default: false)",
+                },
+                "include_process": {
+                    "type": "boolean",
+                    "description": (
+                        "Enable execution flow tracing from entry points (default: false)"
+                    ),
+                },
             },
             "required": ["repo"],
         },
@@ -538,6 +558,10 @@ class ArchGraphMCP:
                 neo4j_password=self._store._password,
                 neo4j_database=self._store._database,
                 include_body=True,
+                include_deep=arguments.get("include_deep", True),
+                include_cve=arguments.get("include_cve", False),
+                include_clustering=arguments.get("include_clustering", False),
+                include_process=arguments.get("include_process", False),
             )
 
             # Extract

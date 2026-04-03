@@ -181,7 +181,12 @@ class ExtractConfig:
     """Configuration for a single extraction run."""
 
     repo_path: Path
-    languages: list[str] = field(default_factory=lambda: ["c", "cpp", "rust", "java", "go"])
+    languages: list[str] = field(
+        default_factory=lambda: [
+            "c", "cpp", "rust", "java", "go",
+            "javascript", "typescript", "python",
+        ]
+    )
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "archgraph"
@@ -195,7 +200,7 @@ class ExtractConfig:
     include_clang: bool = False
     clang_compile_commands: Path | None = None
     clang_extra_args: list[str] = field(default_factory=list)
-    include_deep: bool = False
+    include_deep: bool = True
     workers: int = 0  # 0=auto (min(cpu_count, 8)), 1=sequential
     include_cve: bool = False
     osv_batch_size: int = 1000
