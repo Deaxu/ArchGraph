@@ -22,13 +22,13 @@ archgraph extract REPO_PATH [OPTIONS]
 | `-d, --depth` | — | Clone depth (for git URLs) |
 | `--neo4j-uri` | `bolt://localhost:7687` | Neo4j bolt URI |
 | `--neo4j-user` | `neo4j` | Neo4j username |
-| `--neo4j-password` | `neo4j` | Neo4j password |
+| `--neo4j-password` | `archgraph` | Neo4j password |
 | `--neo4j-database` | `neo4j` | Neo4j database name |
 | `--include-git/--no-git` | `True` | Include git history extraction |
 | `--include-deps/--no-deps` | `True` | Include dependency extraction |
 | `--include-annotations/--no-annotations` | `True` | Include annotations |
 | `--include-clang/--no-clang` | `False` | Enable clang deep analysis |
-| `--include-deep/--no-deep` | `False` | Enable tree-sitter deep analysis |
+| `--include-deep/--no-deep` | `True` | Enable tree-sitter deep analysis |
 | `--compile-commands` | — | Path to compile_commands.json |
 | `-w, --workers` | `0` | Worker threads (0=auto, 1=sequential) |
 | `--include-cve/--no-cve` | `False` | Enable CVE enrichment |
@@ -78,7 +78,7 @@ archgraph query CYPHER_QUERY [OPTIONS]
 |--------|---------|-------------|
 | `--neo4j-uri` | `bolt://localhost:7687` | Neo4j bolt URI |
 | `--neo4j-user` | `neo4j` | Neo4j username |
-| `--neo4j-password` | `neo4j` | Neo4j password |
+| `--neo4j-password` | `archgraph` | Neo4j password |
 | `--neo4j-database` | `neo4j` | Neo4j database name |
 
 **Examples:**
@@ -179,7 +179,7 @@ archgraph mcp [OPTIONS]
 |--------|---------|-------------|
 | `--neo4j-uri` | `bolt://localhost:7687` | Neo4j bolt URI |
 | `--neo4j-user` | `neo4j` | Neo4j username |
-| `--neo4j-password` | `neo4j` | Neo4j password |
+| `--neo4j-password` | `archgraph` | Neo4j password |
 | `--neo4j-database` | `neo4j` | Neo4j database name |
 
 **Connect to agents:**
@@ -209,7 +209,7 @@ archgraph serve [OPTIONS]
 | `-p, --port` | `8080` | Bind port |
 | `--neo4j-uri` | `bolt://localhost:7687` | Neo4j bolt URI |
 | `--neo4j-user` | `neo4j` | Neo4j username |
-| `--neo4j-password` | `neo4j` | Neo4j password |
+| `--neo4j-password` | `archgraph` | Neo4j password |
 | `--neo4j-database` | `neo4j` | Neo4j database name |
 
 Opens a web UI at `http://localhost:8080` with:

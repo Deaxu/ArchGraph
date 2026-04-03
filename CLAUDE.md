@@ -48,7 +48,7 @@ Test dosyaları Neo4j gerektirmez. Tree-sitter ve git testleri `tmp_path` fixtur
 | `archgraph/graph/builder.py` | 11-adım + Step 4.5 pipeline orkestrasyon (parallel/sequential) |
 | `archgraph/graph/schema.py` | `Node`/`Edge` dataclass, `NodeLabel`/`EdgeType` sabitleri |
 | `archgraph/graph/neo4j_store.py` | Neo4j batch import, `_Node` label, `_id` unique |
-| `archgraph/extractors/treesitter.py` | Ana extractor, 10 dil, thread-local parser |
+| `archgraph/extractors/treesitter.py` | Ana extractor, 11 dil, thread-local parser |
 | `archgraph/extractors/clang.py` | libclang deep analysis (CFG, data flow, taint) |
 | `archgraph/extractors/deep/` | Tree-sitter deep analysis (Rust, Java, Go, Kotlin, Swift, JS, TS, Python) |
 | `archgraph/enrichment/cve.py` | CVE enrichment — OSV API batch query |

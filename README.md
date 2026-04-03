@@ -78,7 +78,7 @@ ag.close()
 | Go | SCIP (compiler-backed) | Go toolchain |
 | Java | SCIP (compiler-backed) | JDK |
 | Kotlin | SCIP (compiler-backed) | JDK + `pip install archgraph[kotlin]` |
-| C / C++ | Heuristic (name-based) | `pip install archgraph[clang]` for deep analysis |
+| C / C++ | SCIP (scip-clang, Linux/macOS) | `pip install archgraph[clang]` for libclang deep analysis |
 | Swift | Heuristic (name-based) | `pip install archgraph[swift]` |
 | Objective-C | Heuristic (name-based) | `pip install archgraph[objc]` |
 
@@ -88,7 +88,7 @@ SCIP indexers are downloaded automatically on first use. Install all optional gr
 
 ## Key Features
 
-**Security Analysis** -- automatic labeling of input sources, dangerous sinks, crypto ops, allocators, and parsers. Taint tracking via libclang (C/C++) and tree-sitter (Rust, Java, Go, Kotlin, Swift). CVE detection via [OSV](https://osv.dev). See [Security docs](docs/SECURITY.md).
+**Security Analysis** -- automatic labeling of input sources, dangerous sinks, crypto ops, allocators, and parsers. Taint tracking via libclang (C/C++) and tree-sitter (Rust, Java, Go, Kotlin, Swift, JS, TS, Python). CVE detection via [OSV](https://osv.dev). See [Security docs](docs/SECURITY.md).
 
 **12 MCP Tools** -- `query`, `search`, `search_calls`, `context`, `impact`, `detect_changes`, `find_vulnerabilities`, `source`, `extract`, `stats`, `repos`, `cypher`. See [MCP & API docs](docs/AGENT.md).
 

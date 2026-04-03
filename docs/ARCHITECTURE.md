@@ -237,10 +237,10 @@ Access via the `source` tool (MCP/rlm-agent) or Cypher: `MATCH (f:Function {_id:
 @dataclass
 class ExtractConfig:
     repo_path: Path
-    languages: list[str] = ["c", "cpp", "rust", "java", "go"]
+    languages: list[str] = ["c", "cpp", "rust", "java", "go", "javascript", "typescript", "python"]
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
-    neo4j_password: str = "neo4j"
+    neo4j_password: str = "archgraph"
     neo4j_database: str = "neo4j"
     include_git: bool = True
     include_deps: bool = True
@@ -251,7 +251,7 @@ class ExtractConfig:
     include_clang: bool = False
     clang_compile_commands: Path | None = None
     clang_extra_args: list[str] = []
-    include_deep: bool = False
+    include_deep: bool = True
     workers: int = 0          # 0=auto, 1=sequential
     include_cve: bool = False
     osv_batch_size: int = 1000
