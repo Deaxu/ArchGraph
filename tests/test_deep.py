@@ -37,7 +37,14 @@ def _try_import_lang(lang: str):
         pytest.skip(f"No spec registered for {lang}")
     try:
         mod = importlib.import_module(spec.ts_module)
-        ts_lang = ts.Language(mod.language())
+        # TypeScript module exposes language_typescript() instead of language()
+        if hasattr(mod, "language"):
+            lang_func = mod.language
+        elif hasattr(mod, f"language_{lang}"):
+            lang_func = getattr(mod, f"language_{lang}")
+        else:
+            pytest.skip(f"No language function in {spec.ts_module}")
+        ts_lang = ts.Language(lang_func())
         parser = ts.Parser(ts_lang)
         return parser, spec
     except (ImportError, Exception):
@@ -547,7 +554,7 @@ class TestDeepEdgeCases:
 
     def test_unsupported_lang(self, tmp_path):
         """Files with unsupported extensions should be ignored."""
-        (tmp_path / "test.py").write_text("def foo(): pass\n")
+        (tmp_path / "test.rb").write_text("def foo; end\n")
         from archgraph.extractors.deep import TreeSitterDeepExtractor
         ext = TreeSitterDeepExtractor()
         graph = ext.extract(tmp_path)
@@ -659,3 +666,364 @@ class TestDeepExtractorIntegration:
         assert "rust" in langs
         assert "java" in langs
         assert "go" in langs
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# JavaScript Tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestDeepJavaScriptCFG:
+    """CFG construction tests for JavaScript."""
+
+    def setup_method(self):
+        self.parser, self.spec = _try_import_lang("javascript")
+
+    def test_basic_cfg(self):
+        """Simple function should produce a single basic block."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            function add(a, b) {
+                const c = a + b;
+                return c;
+            }
+        """))
+        assert func is not None
+        body = func.child_by_field_name("body")
+        blocks = build_cfg(body, self.spec)
+        assert len(blocks) >= 1
+        assert len(blocks[0].stmts) >= 1
+
+    def test_if_cfg(self):
+        """If statement should create then/join blocks."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            function check(x) {
+                if (x > 0) {
+                    return 1;
+                }
+                return 0;
+            }
+        """))
+        assert func is not None
+        body = func.child_by_field_name("body")
+        blocks = build_cfg(body, self.spec)
+        assert len(blocks) >= 3
+
+    def test_loop_cfg(self):
+        """While loop should create header/body/exit blocks."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            function loop_fn(x) {
+                while (x > 0) {
+                    x = x - 1;
+                }
+                return x;
+            }
+        """))
+        assert func is not None
+        body = func.child_by_field_name("body")
+        blocks = build_cfg(body, self.spec)
+        assert len(blocks) >= 4
+        has_back_edge = False
+        for b in blocks:
+            for succ in b.successors:
+                if succ < b.index:
+                    has_back_edge = True
+        assert has_back_edge, "Loop should have a back edge"
+
+
+class TestDeepJavaScriptDataFlow:
+    """Data flow tests for JavaScript."""
+
+    def setup_method(self):
+        self.parser, self.spec = _try_import_lang("javascript")
+
+    def test_simple_flow(self):
+        """Variable assignment chain should produce DATA_FLOWS_TO edges."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            function flow() {
+                let a = 1;
+                let b = a;
+                let c = b;
+            }
+        """))
+        assert func is not None
+        graph = GraphData()
+        analysis = analyze_function(func, self.spec, src, "test.js", graph)
+        assert analysis is not None
+        flow_edges = [e for e in graph.edges if e.type == EdgeType.DATA_FLOWS_TO]
+        flow_vars = [
+            (e.properties.get("from_var"), e.properties.get("to_var"))
+            for e in flow_edges
+        ]
+        assert ("a", "b") in flow_vars
+        assert ("b", "c") in flow_vars
+
+
+class TestDeepJavaScriptPatterns:
+    """JavaScript-specific pattern detection tests."""
+
+    def setup_method(self):
+        self.parser, self.spec = _try_import_lang("javascript")
+
+    def test_prototype_pollution(self):
+        """Should detect prototype manipulation."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            function pollute(obj) {
+                obj.__proto__.isAdmin = true;
+            }
+        """))
+        assert func is not None
+        from archgraph.extractors.deep.javascript import detect_js_patterns
+        flags = detect_js_patterns(func, src)
+        assert flags.get("has_prototype_pollution") is True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TypeScript Tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestDeepTypeScriptCFG:
+    """CFG construction tests for TypeScript."""
+
+    def setup_method(self):
+        self.parser, self.spec = _try_import_lang("typescript")
+
+    def test_basic_cfg(self):
+        """Simple function should produce basic blocks."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            function add(a: number, b: number): number {
+                const c = a + b;
+                return c;
+            }
+        """))
+        assert func is not None
+        body = func.child_by_field_name("body")
+        blocks = build_cfg(body, self.spec)
+        assert len(blocks) >= 1
+
+    def test_if_cfg(self):
+        """If statement should create branching blocks."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            function check(x: number): number {
+                if (x > 0) {
+                    return 1;
+                }
+                return 0;
+            }
+        """))
+        assert func is not None
+        body = func.child_by_field_name("body")
+        blocks = build_cfg(body, self.spec)
+        assert len(blocks) >= 3
+
+
+class TestDeepTypeScriptPatterns:
+    """TypeScript-specific pattern detection tests."""
+
+    def setup_method(self):
+        self.parser, self.spec = _try_import_lang("typescript")
+
+    def test_type_assertion(self):
+        """Should detect type assertion."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            function cast(x: unknown): string {
+                return x as string;
+            }
+        """))
+        assert func is not None
+        from archgraph.extractors.deep.typescript import detect_ts_patterns
+        flags = detect_ts_patterns(func, src)
+        assert flags.get("has_type_assertion") is True
+
+    def test_any_type(self):
+        """Should detect `any` type usage."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            function loose(x: any): any {
+                return x;
+            }
+        """))
+        assert func is not None
+        from archgraph.extractors.deep.typescript import detect_ts_patterns
+        flags = detect_ts_patterns(func, src)
+        assert flags.get("has_any_type") is True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Python Tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestDeepPythonCFG:
+    """CFG construction tests for Python."""
+
+    def setup_method(self):
+        self.parser, self.spec = _try_import_lang("python")
+
+    def test_basic_cfg(self):
+        """Simple function should produce basic blocks."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            def add(a, b):
+                c = a + b
+                return c
+        """))
+        assert func is not None
+        body = func.child_by_field_name("body")
+        blocks = build_cfg(body, self.spec)
+        assert len(blocks) >= 1
+
+    def test_if_cfg(self):
+        """If statement should create branching blocks."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            def check(x):
+                if x > 0:
+                    return 1
+                return 0
+        """))
+        assert func is not None
+        body = func.child_by_field_name("body")
+        blocks = build_cfg(body, self.spec)
+        assert len(blocks) >= 3
+
+    def test_for_loop(self):
+        """For loop should create loop blocks."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            def sum_list(items):
+                total = 0
+                for item in items:
+                    total = total + item
+                return total
+        """))
+        assert func is not None
+        body = func.child_by_field_name("body")
+        blocks = build_cfg(body, self.spec)
+        assert len(blocks) >= 4
+
+
+class TestDeepPythonDataFlow:
+    """Data flow tests for Python."""
+
+    def setup_method(self):
+        self.parser, self.spec = _try_import_lang("python")
+
+    def test_simple_flow(self):
+        """Variable assignment chain should produce DATA_FLOWS_TO edges."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            def flow():
+                a = 1
+                b = a
+                c = b
+        """))
+        assert func is not None
+        graph = GraphData()
+        analysis = analyze_function(func, self.spec, src, "test.py", graph)
+        assert analysis is not None
+        flow_edges = [e for e in graph.edges if e.type == EdgeType.DATA_FLOWS_TO]
+        flow_vars = [
+            (e.properties.get("from_var"), e.properties.get("to_var"))
+            for e in flow_edges
+        ]
+        assert ("a", "b") in flow_vars
+        assert ("b", "c") in flow_vars
+
+
+class TestDeepPythonPatterns:
+    """Python-specific pattern detection tests.
+
+    Note: Pattern detection tests use code strings that contain
+    security-sensitive function names for STATIC ANALYSIS detection
+    purposes — the patterns are not executed.
+    """
+
+    def setup_method(self):
+        self.parser, self.spec = _try_import_lang("python")
+
+    def test_subprocess_shell(self):
+        """Should detect subprocess with shell=True."""
+        func, src = _parse_and_find_func(self.parser, self.spec, textwrap.dedent("""\
+            def run_cmd(cmd):
+                import subprocess
+                subprocess.run(cmd, shell=True)
+        """))
+        assert func is not None
+        from archgraph.extractors.deep.python_spec import detect_python_patterns
+        flags = detect_python_patterns(func, src)
+        assert flags.get("has_subprocess_shell") is True
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# JS/TS/Python Integration Tests
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+class TestDeepNewLangIntegration:
+    """Integration tests for newly added deep analysis languages."""
+
+    def test_js_full_extract(self, tmp_path):
+        """Full extraction on a JavaScript file should produce CFG + data flow."""
+        _try_import_lang("javascript")
+
+        (tmp_path / "app.js").write_text(textwrap.dedent("""\
+            function process(input) {
+                let x = 1;
+                let y = x + 2;
+                if (y > 0) {
+                    return y;
+                }
+                return 0;
+            }
+        """))
+
+        from archgraph.extractors.deep import TreeSitterDeepExtractor
+        ext = TreeSitterDeepExtractor(languages=["javascript"])
+        graph = ext.extract(tmp_path)
+
+        bb_nodes = [n for n in graph.nodes if n.label == NodeLabel.BASIC_BLOCK]
+        assert len(bb_nodes) >= 3, f"Expected >= 3 BasicBlocks, got {len(bb_nodes)}"
+
+        branches = [e for e in graph.edges if e.type == EdgeType.BRANCHES_TO]
+        assert len(branches) >= 1
+
+        flows = [e for e in graph.edges if e.type == EdgeType.DATA_FLOWS_TO]
+        assert len(flows) >= 1
+
+    def test_python_full_extract(self, tmp_path):
+        """Full extraction on a Python file should produce CFG + data flow."""
+        _try_import_lang("python")
+
+        (tmp_path / "app.py").write_text(textwrap.dedent("""\
+            def process(input_val):
+                x = 1
+                y = x + 2
+                if y > 0:
+                    return y
+                return 0
+        """))
+
+        from archgraph.extractors.deep import TreeSitterDeepExtractor
+        ext = TreeSitterDeepExtractor(languages=["python"])
+        graph = ext.extract(tmp_path)
+
+        bb_nodes = [n for n in graph.nodes if n.label == NodeLabel.BASIC_BLOCK]
+        assert len(bb_nodes) >= 3, f"Expected >= 3 BasicBlocks, got {len(bb_nodes)}"
+
+    def test_ts_full_extract(self, tmp_path):
+        """Full extraction on a TypeScript file should produce CFG."""
+        _try_import_lang("typescript")
+
+        (tmp_path / "app.ts").write_text(textwrap.dedent("""\
+            function process(input: string): number {
+                const x = 1;
+                const y = x + 2;
+                if (y > 0) {
+                    return y;
+                }
+                return 0;
+            }
+        """))
+
+        from archgraph.extractors.deep import TreeSitterDeepExtractor
+        ext = TreeSitterDeepExtractor(languages=["typescript"])
+        graph = ext.extract(tmp_path)
+
+        bb_nodes = [n for n in graph.nodes if n.label == NodeLabel.BASIC_BLOCK]
+        assert len(bb_nodes) >= 1

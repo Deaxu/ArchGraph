@@ -1,4 +1,5 @@
-"""Tree-sitter deep analysis extractor for Rust, Java, Kotlin, Go, Swift.
+"""Tree-sitter deep analysis extractor for Rust, Java, Kotlin, Go, Swift,
+JavaScript, TypeScript, and Python.
 
 Provides intra-procedural CFG, data flow, and taint analysis using tree-sitter
 AST, extending the same capabilities that ClangExtractor provides for C/C++.
@@ -39,6 +40,21 @@ try:
 except Exception:
     pass
 
+try:
+    from archgraph.extractors.deep import javascript as _javascript  # noqa: F401
+except Exception:
+    pass
+
+try:
+    from archgraph.extractors.deep import typescript as _typescript  # noqa: F401
+except Exception:
+    pass
+
+try:
+    from archgraph.extractors.deep import python_spec as _python_spec  # noqa: F401
+except Exception:
+    pass
+
 
 class TreeSitterDeepExtractor(BaseExtractor):
     """Deep analysis (CFG, data flow, taint) for non-C/C++ languages via tree-sitter."""
@@ -58,7 +74,17 @@ class TreeSitterDeepExtractor(BaseExtractor):
                 continue
             try:
                 mod = importlib.import_module(spec.ts_module)
-                ts_lang = ts.Language(mod.language())
+                # tree-sitter 0.24+ API: language() returns a Language capsule.
+                # TypeScript module exposes language_typescript() instead.
+                if hasattr(mod, "language"):
+                    lang_func = mod.language
+                elif hasattr(mod, f"language_{lang}"):
+                    lang_func = getattr(mod, f"language_{lang}")
+                else:
+                    raise AttributeError(
+                        f"No language function found in {spec.ts_module}"
+                    )
+                ts_lang = ts.Language(lang_func())
                 parser = ts.Parser(ts_lang)
                 self._parsers[lang] = parser
                 self._ts_languages[lang] = ts_lang
