@@ -645,8 +645,9 @@ class ClangScipIndexer:
         compdb = self._find_or_generate_compdb(repo_path)
         if compdb is None:
             logger.warning(
-                "No compile_commands.json found and could not generate one — "
-                "scip-clang requires a compilation database"
+                "No compile_commands.json found and could not generate one. "
+                "C/C++ call resolution will fall back to heuristic (~40-75%% accuracy). "
+                "For compiler-backed resolution, provide a compilation database."
             )
             return None
 
@@ -715,6 +716,8 @@ class ClangScipIndexer:
             or (repo_path / "makefile").exists()
             or (repo_path / "GNUmakefile").exists()
         )
+        has_configure = (repo_path / "configure").exists()
+
         if has_makefile:
             if shutil.which("bear"):
                 result = self._generate_compdb_bear(repo_path, output)
@@ -726,12 +729,20 @@ class ClangScipIndexer:
                     return result
 
         # 4. configure script → run configure first, then bear make
-        if (repo_path / "configure").exists() and shutil.which("bear"):
+        if has_configure and shutil.which("bear"):
             result = self._generate_compdb_autotools(repo_path, output)
             if result:
                 return result
 
-        if not has_makefile and not (repo_path / "CMakeLists.txt").exists():
+        # Actionable guidance when generation failed
+        if has_makefile or has_configure:
+            if not shutil.which("bear") and not shutil.which("compiledb"):
+                logger.warning(
+                    "Makefile found but neither 'bear' nor 'compiledb' is installed. "
+                    "Install one for C/C++ SCIP resolution: "
+                    "apt install bear  OR  pip install compiledb"
+                )
+        elif not (repo_path / "CMakeLists.txt").exists():
             logger.info(
                 "No build system detected (CMakeLists.txt, Makefile, configure). "
                 "scip-clang requires a compilation database."
