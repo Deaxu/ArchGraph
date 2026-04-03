@@ -145,7 +145,7 @@ SECURITY_COMMIT_PATTERNS = [
 
 # Directories to skip during scanning
 SKIP_DIRS = frozenset({
-    ".git", "node_modules", "__pycache__", ".tox", ".venv", "venv",
+    ".git", ".archgraph", "node_modules", "__pycache__", ".tox", ".venv", "venv",
     "vendor", "third_party", "3rdparty", "external", "deps",
     "build", "dist", "out", "target", "cmake-build-debug",
     "cmake-build-release", ".idea", ".vscode",
