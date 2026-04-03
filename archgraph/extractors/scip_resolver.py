@@ -779,7 +779,12 @@ class ClangScipIndexer:
 
             logger.info("Downloading scip-clang from %s", asset_url)
             with urlopen(asset_url, timeout=600) as resp:
-                target.write_bytes(resp.read())
+                with open(target, "wb") as f:
+                    while True:
+                        chunk = resp.read(8 * 1024 * 1024)  # 8MB chunks
+                        if not chunk:
+                            break
+                        f.write(chunk)
             target.chmod(0o755)
             return True
         except Exception as e:
