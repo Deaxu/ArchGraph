@@ -104,6 +104,7 @@ def test_full_pipeline(sample_c_project):
         include_deps=True,
         include_annotations=True,
         include_security_labels=True,
+        include_scip=False,  # SCIP needs real toolchain; test heuristic resolution
     )
 
     builder = GraphBuilder(config)
@@ -278,6 +279,7 @@ def test_pipeline_parallel(sample_c_project):
         include_deps=True,
         include_annotations=True,
         include_security_labels=True,
+        include_scip=False,  # SCIP needs real toolchain; test pipeline parity
     )
 
     config_seq = ExtractConfig(**base_kwargs, workers=1)
