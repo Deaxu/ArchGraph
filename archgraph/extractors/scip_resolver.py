@@ -615,6 +615,196 @@ class GoIndexer:
         return self._scip_go_path() is not None
 
 
+class ClangScipIndexer:
+    """SCIP indexer for C/C++ using scip-clang.
+
+    scip-clang wraps clang to produce SCIP indices with full type information.
+    Requires a compile_commands.json in the repository (or generates one via cmake).
+
+    https://github.com/sourcegraph/scip-clang
+    """
+
+    language = "c"
+
+    def install(self, repo_path: Path) -> bool:
+        if self._is_available():
+            return True
+
+        logger.info("scip-clang not found, attempting to download from GitHub releases...")
+        if self._download_binary():
+            return self._is_available()
+
+        logger.warning(
+            "Could not install scip-clang automatically. "
+            "Install manually from https://github.com/sourcegraph/scip-clang/releases "
+            "and ensure it is on PATH."
+        )
+        return False
+
+    def index(self, repo_path: Path) -> Path | None:
+        compdb = self._find_or_generate_compdb(repo_path)
+        if compdb is None:
+            logger.warning(
+                "No compile_commands.json found and could not generate one — "
+                "scip-clang requires a compilation database"
+            )
+            return None
+
+        output_dir = repo_path / ".archgraph"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / "index.scip"
+
+        scip_clang = self._scip_clang_path()
+        if not scip_clang:
+            return None
+
+        cmd = [scip_clang, f"--compdb-path={compdb}"]
+
+        logger.info("Running scip-clang index...")
+        try:
+            # scip-clang writes index.scip to cwd by default
+            result = subprocess.run(
+                cmd,
+                cwd=str(repo_path),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=600,
+                shell=_SHELL,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("scip-clang timed out")
+            return None
+
+        if result.returncode != 0:
+            logger.warning("scip-clang failed: %s", result.stderr[:500])
+            return None
+
+        # scip-clang writes index.scip in cwd (repo root)
+        cwd_output = repo_path / "index.scip"
+        if cwd_output.exists():
+            cwd_output.rename(output_path)
+        return output_path if output_path.exists() else None
+
+    def _find_or_generate_compdb(self, repo_path: Path) -> Path | None:
+        """Find compile_commands.json or try to generate one with cmake."""
+        for candidate in [
+            repo_path / "compile_commands.json",
+            repo_path / "build" / "compile_commands.json",
+            repo_path / "cmake-build-debug" / "compile_commands.json",
+            repo_path / "cmake-build-release" / "compile_commands.json",
+            repo_path / "out" / "compile_commands.json",
+        ]:
+            if candidate.exists():
+                return candidate
+
+        if (repo_path / "CMakeLists.txt").exists() and shutil.which("cmake"):
+            return self._generate_compdb_cmake(repo_path)
+
+        return None
+
+    def _generate_compdb_cmake(self, repo_path: Path) -> Path | None:
+        """Generate compile_commands.json using cmake."""
+        build_dir = repo_path / ".archgraph" / "cmake_build"
+        build_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Generating compile_commands.json with cmake...")
+        try:
+            result = subprocess.run(
+                [
+                    "cmake",
+                    f"-S{repo_path}",
+                    f"-B{build_dir}",
+                    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=120,
+                shell=_SHELL,
+            )
+            if result.returncode == 0:
+                compdb = build_dir / "compile_commands.json"
+                if compdb.exists():
+                    return compdb
+        except subprocess.TimeoutExpired:
+            logger.warning("cmake timed out generating compile_commands.json")
+        return None
+
+    def _download_binary(self) -> bool:
+        """Try to download scip-clang binary from GitHub releases."""
+        import json as _json
+        import platform as _platform
+        from urllib.request import urlopen
+
+        system = _platform.system()
+        machine = _platform.machine().lower()
+
+        if system == "Windows":
+            logger.info(
+                "scip-clang does not provide prebuilt Windows binaries. "
+                "Build from source or use WSL."
+            )
+            return False
+
+        # Release asset names: scip-clang-x86_64-linux, scip-clang-arm64-darwin
+        if system == "Linux" and machine in ("x86_64", "amd64"):
+            asset_name = "scip-clang-x86_64-linux"
+        elif system == "Darwin" and machine in ("arm64", "aarch64"):
+            asset_name = "scip-clang-arm64-darwin"
+        else:
+            logger.warning("No prebuilt scip-clang for %s/%s", system, machine)
+            return False
+
+        try:
+            from archgraph.tools import BIN_DIR
+            BIN_DIR.mkdir(parents=True, exist_ok=True)
+            target = BIN_DIR / "scip-clang"
+
+            api_url = (
+                "https://api.github.com/repos/sourcegraph/scip-clang/releases/latest"
+            )
+            with urlopen(api_url, timeout=30) as resp:
+                release = _json.loads(resp.read())
+
+            asset_url = None
+            for asset in release.get("assets", []):
+                if asset["name"] == asset_name:
+                    asset_url = asset["browser_download_url"]
+                    break
+
+            if not asset_url:
+                return False
+
+            logger.info("Downloading scip-clang from %s", asset_url)
+            with urlopen(asset_url, timeout=600) as resp:
+                target.write_bytes(resp.read())
+            target.chmod(0o755)
+            return True
+        except Exception as e:
+            logger.warning("Failed to download scip-clang: %s", e)
+            return False
+
+    def _scip_clang_path(self) -> str | None:
+        """Find scip-clang binary on PATH or in managed tools dir."""
+        path = shutil.which("scip-clang")
+        if path:
+            return path
+        try:
+            from archgraph.tools import BIN_DIR
+            for name in ("scip-clang", "scip-clang.exe"):
+                candidate = BIN_DIR / name
+                if candidate.exists():
+                    return str(candidate)
+        except ImportError:
+            pass
+        return None
+
+    def _is_available(self) -> bool:
+        return self._scip_clang_path() is not None
+
+
 INDEXER_REGISTRY: dict[str, type] = {
     "typescript": TypeScriptIndexer,
     "javascript": TypeScriptIndexer,
@@ -623,6 +813,8 @@ INDEXER_REGISTRY: dict[str, type] = {
     "kotlin": JavaIndexer,
     "rust": RustIndexer,
     "go": GoIndexer,
+    "c": ClangScipIndexer,
+    "cpp": ClangScipIndexer,
 }
 
 
@@ -871,6 +1063,9 @@ class ScipResolver:
             if lang in ("typescript", "javascript"):
                 scip_languages.add("typescript")
                 scip_languages.add("javascript")
+            if lang in ("c", "cpp"):
+                scip_languages.add("c")
+                scip_languages.add("cpp")
 
         if scip_data and scip_languages:
             self._cleanup_funcref(scip_languages)

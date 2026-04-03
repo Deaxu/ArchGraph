@@ -218,6 +218,58 @@ class TestFuncrefCleanup:
         assert any(n.id == "funcref:printf" for n in graph.nodes)
 
 
+# ── Task 5: ClangScipIndexer ──────────────────────────────────────────────────
+
+
+class TestClangScipIndexer:
+    def test_registry_has_c_cpp(self):
+        from archgraph.extractors.scip_resolver import INDEXER_REGISTRY, ClangScipIndexer
+        assert "c" in INDEXER_REGISTRY
+        assert "cpp" in INDEXER_REGISTRY
+        assert INDEXER_REGISTRY["c"] is ClangScipIndexer
+        assert INDEXER_REGISTRY["cpp"] is ClangScipIndexer
+
+    def test_install_when_binary_exists(self):
+        from archgraph.extractors.scip_resolver import ClangScipIndexer
+        with patch.object(ClangScipIndexer, "_is_available", return_value=True):
+            assert ClangScipIndexer().install(Path("/fake")) is True
+
+    def test_install_no_binary_no_download(self):
+        from archgraph.extractors.scip_resolver import ClangScipIndexer
+        with patch.object(ClangScipIndexer, "_is_available", return_value=False), \
+             patch.object(ClangScipIndexer, "_download_binary", return_value=False):
+            assert ClangScipIndexer().install(Path("/fake")) is False
+
+    def test_index_no_compdb(self, tmp_path):
+        """No compile_commands.json should return None."""
+        from archgraph.extractors.scip_resolver import ClangScipIndexer
+        indexer = ClangScipIndexer()
+        assert indexer.index(tmp_path) is None
+
+    def test_index_with_compdb(self, tmp_path):
+        """With compile_commands.json, should attempt scip-clang."""
+        from archgraph.extractors.scip_resolver import ClangScipIndexer
+        (tmp_path / "compile_commands.json").write_text("[]")
+        (tmp_path / ".archgraph").mkdir()
+        (tmp_path / ".archgraph" / "index.scip").write_bytes(b"fake")
+        indexer = ClangScipIndexer()
+        with patch.object(indexer, "_scip_clang_path", return_value="scip-clang"), \
+             patch("subprocess.run", return_value=MagicMock(returncode=0)):
+            result = indexer.index(tmp_path)
+            assert result is not None
+
+    def test_cmake_generation_attempted(self, tmp_path):
+        """Should try cmake if CMakeLists.txt exists but no compile_commands.json."""
+        from archgraph.extractors.scip_resolver import ClangScipIndexer
+        (tmp_path / "CMakeLists.txt").write_text("project(test)")
+        indexer = ClangScipIndexer()
+        with patch("shutil.which", return_value="/usr/bin/cmake"), \
+             patch("subprocess.run", return_value=MagicMock(returncode=1)):
+            # cmake fails, so index returns None
+            result = indexer.index(tmp_path)
+            assert result is None
+
+
 class TestFallback:
     def test_c_uses_heuristic(self):
         graph = GraphData()
