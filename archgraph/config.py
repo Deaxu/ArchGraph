@@ -197,7 +197,7 @@ class ExtractConfig:
     include_security_labels: bool = True
     max_file_size: int = 1_000_000  # 1MB
     git_max_commits: int = 10_000
-    include_clang: bool = False
+    include_clang: bool = True  # graceful skip if libclang not installed
     clang_compile_commands: Path | None = None
     clang_extra_args: list[str] = field(default_factory=list)
     include_deep: bool = True

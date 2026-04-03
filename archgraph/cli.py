@@ -112,7 +112,7 @@ def main() -> None:
 @click.option("--include-git/--no-git", default=True, help="Include git history extraction")
 @click.option("--include-deps/--no-deps", default=True, help="Include dependency extraction")
 @click.option("--include-annotations/--no-annotations", default=True, help="Include annotations")
-@click.option("--include-clang/--no-clang", default=False, help="Enable clang deep analysis")
+@click.option("--include-clang/--no-clang", default=True, help="Enable clang deep analysis (skipped if libclang not installed)")
 @click.option("--include-deep/--no-deep", default=True, help="Enable tree-sitter deep analysis")
 @click.option(
     "--compile-commands", type=click.Path(exists=True, path_type=Path), default=None,
