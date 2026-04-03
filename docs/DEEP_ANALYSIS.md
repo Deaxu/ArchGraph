@@ -1,8 +1,6 @@
 # Deep Analysis
 
-ArchGraph provides intra-procedural deep analysis for 7 languages across two engines.
-
-> **Note:** Python and TypeScript/JavaScript use SCIP compiler-backed resolution for accurate cross-file call resolution instead of deep analysis. Deep analysis focuses on CFG, data flow, and taint tracking for languages where these are most relevant.
+ArchGraph provides intra-procedural deep analysis for 10 languages across two engines.
 
 ## C/C++ via libclang
 
@@ -63,7 +61,7 @@ recv() → buf → processed_buf → memcpy()
 
 Generates: `TAINTS (funcref:path:recv:0 → funcref:path:memcpy:0)`
 
-## Rust, Java, Go, Kotlin, Swift via tree-sitter
+## Rust, Java, Go, Kotlin, Swift, JavaScript, TypeScript, Python via tree-sitter
 
 Enable with `--include-deep` or `include_deep=True`.
 
@@ -76,6 +74,9 @@ These languages use a shared deep analysis engine (`deep/engine.py`) with langua
 | Rust | Built-in | tree-sitter-rust (required) |
 | Java | Built-in | tree-sitter-java (required) |
 | Go | Built-in | tree-sitter-go (required) |
+| JavaScript | Built-in | tree-sitter-javascript (required) |
+| TypeScript | Built-in | tree-sitter-typescript (required) |
+| Python | Built-in | tree-sitter-python (required) |
 | Kotlin | Optional | `pip install -e ".[kotlin]"` |
 | Swift | Optional | `pip install -e ".[swift]"` |
 
@@ -88,6 +89,9 @@ Same as C/C++ (CFG, data flow, taint) plus language-specific pattern detection:
 | Rust | unsafe blocks, transmute, unwrap, raw pointer deref | `has_unsafe_block`, `has_transmute`, `has_force_unwrap` |
 | Java | reflection, serialization, synchronized blocks, native methods | `has_reflection`, `has_serialization`, `has_synchronized`, `has_native` |
 | Go | goroutines, defer, channel operations, unsafe pointers, error checks | `has_goroutine`, `has_channel_op`, `has_defer`, `has_unsafe_pointer`, `has_error_check` |
+| JavaScript | dangerous eval, innerHTML/XSS, dynamic import, prototype pollution | `has_dangerous_eval`, `has_innerHTML`, `has_dynamic_import`, `has_prototype_pollution` |
+| TypeScript | all JS patterns + type assertions, any type usage | `has_type_assertion`, `has_any_type` |
+| Python | dangerous exec/eval, unsafe deserialization, subprocess shell, SQL injection | `has_dangerous_exec`, `has_dangerous_eval`, `has_unsafe_deserialization`, `has_subprocess_shell`, `has_sql_string_format` |
 | Kotlin | coroutines, force unwrap (!!), safe calls (?.) | `has_coroutine`, `has_force_unwrap`, `has_safe_call` |
 | Swift | force unwrap (!), optional chaining (?.), force try (try!), weak refs | `has_force_unwrap`, `has_optional_chain`, `has_force_try`, `has_weak_ref` |
 

@@ -58,7 +58,8 @@
   - [x] Go via `scip-go` (auto-install via go install)
   - [x] Java/Kotlin via `scip-java` (coursier-based)
   - [x] Python via `@sourcegraph/scip-python` (auto-install + Windows auto-patch)
-  - [x] Heuristic fallback for C/C++ and unsupported languages
+  - [x] C/C++ via `scip-clang` (auto-download Linux/macOS, heuristic fallback)
+  - [x] Heuristic fallback for unsupported languages
   - [x] Compiler-backed resolution with full type information
 - [x] **Qualifier Preservation** — `Counter.increment()` → qualifier + name tracked
 - [x] **Named Import Parsing** — JS/TS/Rust/Java/Go import symbol extraction
@@ -72,7 +73,8 @@
 - [ ] **IDE plugins** — VS Code / JetBrains integration
 - [ ] **Performance** — Rust-based parser for 10x speed improvement
 - [ ] **Cloud deployment** — Managed Neo4j + hosted MCP server
-- [ ] **C/C++ SCIP** — scip-clang integration for compiler-backed C/C++ resolution
+- [x] **C/C++ SCIP** — scip-clang integration for compiler-backed C/C++ resolution
+- [x] **JS/TS/Python Deep Analysis** — CFG, data flow, taint, pattern detection
 
 ## Comparison with Similar Tools
 

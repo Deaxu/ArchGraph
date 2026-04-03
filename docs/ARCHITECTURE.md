@@ -18,6 +18,7 @@ archgraph/
 │       ├── engine.py       # CFG builder, reaching definitions, data flow, taint
 │       ├── lang_spec.py    # LangSpec dataclass + REGISTRY
 │       ├── rust.py / java.py / go.py / kotlin.py / swift.py
+│       ├── javascript.py / typescript.py / python_spec.py
 ├── graph/
 │   ├── schema.py           # Node/Edge dataclass, NodeLabel/EdgeType constants
 │   ├── builder.py          # 11-step pipeline (parallel/sequential) orchestration
@@ -93,7 +94,7 @@ Adding a new language requires implementing the `ScipIndexer` protocol
 | Java/Kotlin | `scip-java` | Active |
 | Rust | `rust-analyzer` | Active |
 | Go | `scip-go` | Active |
-| C/C++ | `scip-clang` | Planned |
+| C/C++ | `scip-clang` | Active |
 
 ### Incremental Extraction
 
