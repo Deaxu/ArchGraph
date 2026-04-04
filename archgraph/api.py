@@ -71,12 +71,20 @@ class ArchGraph:
         include_body: bool = True,
         include_git: bool = True,
         include_deps: bool = True,
+        include_annotations: bool = True,
+        include_security_labels: bool = True,
         include_deep: bool = True,
         include_clang: bool = True,
         include_cve: bool = False,
         include_scip: bool = True,
         include_clustering: bool = False,
         include_process: bool = False,
+        workers: int = 0,
+        incremental: bool = False,
+        max_body_size: int = 51_200,
+        compile_commands: Path | None = None,
+        branch: str | None = None,
+        depth: int | None = 1,
     ) -> dict[str, Any]:
         """Extract code graph from a repository.
 
@@ -87,12 +95,20 @@ class ArchGraph:
             include_body: Store source code bodies in graph nodes.
             include_git: Include git history extraction.
             include_deps: Include dependency extraction.
+            include_annotations: Include annotation scanning (TODO/HACK/FIXME).
+            include_security_labels: Include automatic security labeling.
             include_deep: Enable CFG, data flow, and taint analysis.
             include_clang: Enable libclang deep analysis for C/C++.
             include_cve: Enable CVE vulnerability scanning via OSV API.
             include_scip: Enable SCIP compiler-backed call resolution.
             include_clustering: Enable community detection on function graph.
             include_process: Enable execution flow tracing from entry points.
+            workers: Number of worker threads (0=auto, 1=sequential).
+            incremental: Only re-extract changed files.
+            max_body_size: Max body size in bytes (truncate beyond).
+            compile_commands: Path to compile_commands.json for clang analysis.
+            branch: Branch to clone (for git URLs).
+            depth: Clone depth (for git URLs, default 1).
 
         Returns:
             Dict with extraction results: nodes, edges, resolved_calls, time, etc.
@@ -104,8 +120,14 @@ class ArchGraph:
             if _is_git_url(repo):
                 tmp = Path(tempfile.mkdtemp(prefix="archgraph_api_"))
                 cloned_dir = tmp / _repo_name_from_url(repo)
+                cmd = ["git", "clone"]
+                if depth:
+                    cmd += ["--depth", str(depth)]
+                if branch:
+                    cmd += ["--branch", branch]
+                cmd += [repo, str(cloned_dir)]
                 result = subprocess.run(
-                    ["git", "clone", "--depth", "1", repo, str(cloned_dir)],
+                    cmd,
                     capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
                 )
                 if result.returncode != 0:
@@ -131,12 +153,18 @@ class ArchGraph:
                 include_body=include_body,
                 include_git=include_git,
                 include_deps=include_deps,
+                include_annotations=include_annotations,
+                include_security_labels=include_security_labels,
                 include_deep=include_deep,
                 include_clang=include_clang,
+                clang_compile_commands=compile_commands,
                 include_cve=include_cve,
                 include_scip=include_scip,
                 include_clustering=include_clustering,
                 include_process=include_process,
+                workers=workers,
+                incremental=incremental,
+                max_body_size=max_body_size,
             )
 
             start = time.time()

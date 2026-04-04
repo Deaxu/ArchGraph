@@ -190,6 +190,46 @@ TOOLS = [
                         "Enable SCIP compiler-backed call resolution (default: true)"
                     ),
                 },
+                "include_git": {
+                    "type": "boolean",
+                    "description": "Include git history extraction (default: true)",
+                },
+                "include_deps": {
+                    "type": "boolean",
+                    "description": "Include dependency extraction (default: true)",
+                },
+                "include_clang": {
+                    "type": "boolean",
+                    "description": "Enable libclang deep analysis for C/C++ (default: true)",
+                },
+                "include_body": {
+                    "type": "boolean",
+                    "description": "Store source code bodies in graph nodes (default: true)",
+                },
+                "include_annotations": {
+                    "type": "boolean",
+                    "description": "Include annotation scanning — TODO/HACK/FIXME (default: true)",
+                },
+                "workers": {
+                    "type": "integer",
+                    "description": "Number of worker threads, 0=auto, 1=sequential (default: 0)",
+                },
+                "incremental": {
+                    "type": "boolean",
+                    "description": "Only re-extract changed files (default: false)",
+                },
+                "max_body_size": {
+                    "type": "integer",
+                    "description": "Max body size in bytes, truncate beyond (default: 51200)",
+                },
+                "branch": {
+                    "type": "string",
+                    "description": "Branch to clone (for git URLs)",
+                },
+                "depth": {
+                    "type": "integer",
+                    "description": "Clone depth for git URLs (default: 1)",
+                },
             },
             "required": ["repo"],
         },
@@ -537,8 +577,16 @@ class ArchGraphMCP:
             if _is_git_url(repo):
                 tmp = Path(tempfile.mkdtemp(prefix="archgraph_mcp_"))
                 cloned_dir = tmp / _repo_name_from_url(repo)
+                clone_depth = arguments.get("depth", 1)
+                clone_branch = arguments.get("branch")
+                cmd = ["git", "clone"]
+                if clone_depth:
+                    cmd += ["--depth", str(clone_depth)]
+                if clone_branch:
+                    cmd += ["--branch", clone_branch]
+                cmd += [repo, str(cloned_dir)]
                 result = subprocess.run(
-                    ["git", "clone", "--depth", "1", repo, str(cloned_dir)],
+                    cmd,
                     capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
                 )
                 if result.returncode != 0:
@@ -563,12 +611,19 @@ class ArchGraphMCP:
                 neo4j_user=self._store._user,
                 neo4j_password=self._store._password,
                 neo4j_database=self._store._database,
-                include_body=True,
+                include_body=arguments.get("include_body", True),
+                include_git=arguments.get("include_git", True),
+                include_deps=arguments.get("include_deps", True),
+                include_annotations=arguments.get("include_annotations", True),
                 include_deep=arguments.get("include_deep", True),
+                include_clang=arguments.get("include_clang", True),
                 include_scip=arguments.get("include_scip", True),
                 include_cve=arguments.get("include_cve", False),
                 include_clustering=arguments.get("include_clustering", False),
                 include_process=arguments.get("include_process", False),
+                workers=arguments.get("workers", 0),
+                incremental=arguments.get("incremental", False),
+                max_body_size=arguments.get("max_body_size", 51_200),
             )
 
             # Extract
