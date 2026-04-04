@@ -97,13 +97,13 @@ class ArchGraph:
         Returns:
             Dict with extraction results: nodes, edges, resolved_calls, time, etc.
         """
-        from archgraph.cli import _detect_languages, _is_git_url
+        from archgraph.cli import _detect_languages, _is_git_url, _repo_name_from_url
 
         cloned_dir: Path | None = None
         try:
             if _is_git_url(repo):
                 tmp = Path(tempfile.mkdtemp(prefix="archgraph_api_"))
-                cloned_dir = tmp / "repo"
+                cloned_dir = tmp / _repo_name_from_url(repo)
                 result = subprocess.run(
                     ["git", "clone", "--depth", "1", repo, str(cloned_dir)],
                     capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,

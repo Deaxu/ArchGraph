@@ -523,7 +523,7 @@ class ArchGraphMCP:
         import subprocess
         import tempfile
 
-        from archgraph.cli import _detect_languages, _is_git_url
+        from archgraph.cli import _detect_languages, _is_git_url, _repo_name_from_url
         from archgraph.config import ExtractConfig
         from archgraph.graph.builder import GraphBuilder
 
@@ -536,7 +536,7 @@ class ArchGraphMCP:
             # Clone if git URL
             if _is_git_url(repo):
                 tmp = Path(tempfile.mkdtemp(prefix="archgraph_mcp_"))
-                cloned_dir = tmp / "repo"
+                cloned_dir = tmp / _repo_name_from_url(repo)
                 result = subprocess.run(
                     ["git", "clone", "--depth", "1", repo, str(cloned_dir)],
                     capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,

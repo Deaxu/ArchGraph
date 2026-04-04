@@ -38,15 +38,34 @@ def _is_git_url(value: str) -> bool:
     return bool(_GIT_URL_RE.search(value))
 
 
+def _repo_name_from_url(url: str) -> str:
+    """Extract repository name from a git URL.
+
+    Examples:
+        https://github.com/user/project.git  → project
+        git@github.com:user/project.git      → project
+        https://github.com/user/project      → project
+        https://github.com/user/project/     → project
+    """
+    name = url.rstrip("/").split("/")[-1]
+    if name.endswith(".git"):
+        name = name[:-4]
+    # Handle git@host:user/repo.git format
+    if ":" in name:
+        name = name.split(":")[-1].split("/")[-1]
+    return name or "repo"
+
+
 def _clone_repo(url: str, branch: str | None, depth: int | None) -> Path:
     """Clone a git repo to a temp directory and return the path."""
     tmp = Path(tempfile.mkdtemp(prefix="archgraph_clone_"))
+    repo_name = _repo_name_from_url(url)
     cmd = ["git", "clone"]
     if depth:
         cmd += ["--depth", str(depth)]
     if branch:
         cmd += ["--branch", branch]
-    cmd += [url, str(tmp / "repo")]
+    cmd += [url, str(tmp / repo_name)]
     console.print(f"[bold]Cloning[/bold] [cyan]{url}[/cyan] ...")
     result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if result.returncode != 0:
@@ -54,7 +73,7 @@ def _clone_repo(url: str, branch: str | None, depth: int | None) -> Path:
         console.print(f"[red]git clone failed:[/red] {result.stderr.strip()}")
         raise click.Abort()
     console.print("[green]Clone complete.[/green]")
-    return tmp / "repo"
+    return tmp / repo_name
 
 
 def _setup_logging(verbose: bool) -> None:
