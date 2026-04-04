@@ -72,7 +72,7 @@ class ArchGraph:
         include_git: bool = True,
         include_deps: bool = True,
         include_deep: bool = True,
-        include_clang: bool = False,
+        include_clang: bool = True,
         include_cve: bool = False,
         include_scip: bool = True,
         include_clustering: bool = False,

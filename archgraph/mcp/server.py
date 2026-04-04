@@ -162,7 +162,7 @@ TOOLS = [
                 },
                 "clear_db": {
                     "type": "boolean",
-                    "description": "Clear existing graph data before import (default: true)",
+                    "description": "Clear existing graph data before import (default: false)",
                 },
                 "include_deep": {
                     "type": "boolean",
@@ -529,7 +529,7 @@ class ArchGraphMCP:
 
         repo = arguments["repo"]
         languages_str = arguments.get("languages", "auto")
-        clear_db = arguments.get("clear_db", True)
+        clear_db = arguments.get("clear_db", False)
 
         cloned_dir: Path | None = None
         try:
