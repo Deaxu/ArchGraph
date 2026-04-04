@@ -234,25 +234,6 @@ def extract(
         except Exception as e:
             console.print(f"[dim]Registry update failed: {e}[/dim]")
 
-        # Generate skills if requested
-        if include_clustering or include_process:
-            try:
-                from archgraph.skills import SkillGenerator
-                with Neo4jStore(neo4j_uri, neo4j_user, neo4j_password, neo4j_database) as store:
-                    store.import_graph(graph, repo_name=resolved_path.name)
-                    gen = SkillGenerator(store)
-                    gen.generate_skills(resolved_path)
-                    console.print("[green]Agent skills generated.[/green]")
-            except Exception:
-                pass
-
-        try:
-            from archgraph.registry import get_registry
-            get_registry().register(resolved_path, neo4j_uri=neo4j_uri, neo4j_database=neo4j_database,
-                stats={"node_count": graph.node_count, "edge_count": graph.edge_count})
-        except Exception:
-            pass
-
         # Import into Neo4j
         console.print(f"\n[bold]Importing into Neo4j[/bold] at {neo4j_uri}...")
         try:
@@ -272,6 +253,16 @@ def extract(
                     f"[green]Imported {result['nodes_imported']} nodes and "
                     f"{result['edges_imported']} edges in {import_time:.1f}s[/green]"
                 )
+
+                # Generate skills after import (data is now in Neo4j)
+                if include_clustering or include_process:
+                    try:
+                        from archgraph.skills import SkillGenerator
+                        gen = SkillGenerator(store)
+                        gen.generate_skills(resolved_path)
+                        console.print("[green]Agent skills generated.[/green]")
+                    except Exception:
+                        pass
         except Exception as e:
             console.print(f"[red]Neo4j import failed: {e}[/red]")
             console.print(
