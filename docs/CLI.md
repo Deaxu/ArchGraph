@@ -27,7 +27,7 @@ archgraph extract REPO_PATH [OPTIONS]
 | `--include-git/--no-git` | `True` | Include git history extraction |
 | `--include-deps/--no-deps` | `True` | Include dependency extraction |
 | `--include-annotations/--no-annotations` | `True` | Include annotations |
-| `--include-clang/--no-clang` | `False` | Enable clang deep analysis |
+| `--include-clang/--no-clang` | `True` | Enable clang deep analysis (skipped if libclang not installed) |
 | `--include-deep/--no-deep` | `True` | Enable tree-sitter deep analysis |
 | `--compile-commands` | — | Path to compile_commands.json |
 | `-w, --workers` | `0` | Worker threads (0=auto, 1=sequential) |
@@ -357,7 +357,7 @@ All Neo4j options can be set via environment variables:
 |----------|---------|
 | `ARCHGRAPH_NEO4J_URI` | `bolt://localhost:7687` |
 | `ARCHGRAPH_NEO4J_USER` | `neo4j` |
-| `ARCHGRAPH_NEO4J_PASSWORD` | `neo4j` |
+| `ARCHGRAPH_NEO4J_PASSWORD` | `archgraph` |
 | `ARCHGRAPH_NEO4J_DATABASE` | `neo4j` |
 
 ---

@@ -217,6 +217,21 @@ List all extracted and indexed repositories.
 }
 ```
 
+### `use_repo`
+
+Set the active repository for subsequent queries. Required before using search, context, impact, source, stats, query, cypher, detect_changes, find_vulnerabilities, or search_calls when multiple repos are indexed.
+
+```json
+{
+  "name": "use_repo",
+  "arguments": {
+    "name": "fastify"
+  }
+}
+```
+
+Use `repos` first to list available names.
+
 ### `cypher` / `stats`
 
 - `cypher`: Raw Cypher query (alias for `query`)
@@ -380,7 +395,7 @@ with ArchGraph() as ag:
     repos = ag.repos()
 ```
 
-All 12 tools available: `extract`, `search`, `repos`, `search_calls`, `query`, `cypher`, `source`, `context`, `stats`, `impact`, `detect_changes`, `find_vulnerabilities`.
+All 13 tools available: `extract`, `search`, `repos`, `use_repo`, `search_calls`, `query`, `cypher`, `source`, `context`, `stats`, `impact`, `detect_changes`, `find_vulnerabilities`.
 
 ---
 
@@ -397,3 +412,7 @@ archgraph repos --format json
 ```
 
 The MCP server can serve all indexed repos. When only one repo is indexed, the tool's `repo` parameter is optional.
+
+## Performance
+
+MCP tool results are cached with a 60-second TTL (max 128 entries). Identical tool calls within the TTL window return cached results. Cache keys are computed from tool name + JSON-serialized arguments.

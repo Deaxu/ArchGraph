@@ -56,15 +56,17 @@ Test dosyaları Neo4j gerektirmez. Tree-sitter ve git testleri `tmp_path` fixtur
 | `archgraph/api.py` | Python API — `ArchGraph` sınıfı, tüm tool'ların programmatik erişimi |
 | `archgraph/extractors/scip_resolver.py` | SCIP compiler-backed call resolution (TS/JS/Rust/Go/Java/Python/C/C++) |
 | `archgraph/extractors/call_resolver.py` | Heuristic call resolution (SCIP fallback, 4-seviye zincir) |
-| `archgraph/mcp/server.py` | MCP server — 12 tool, 4 resource |
+| `archgraph/mcp/server.py` | MCP server — 13 tool, 4 resource |
 
 ## Dokümantasyon
 
 Detaylı dökümantasyon `docs/` altında:
 
 - `docs/ARCHITECTURE.md` — Proje yapısı, pipeline, graph schema, node/edge tipleri
-- `docs/CLI.md` — Tüm komutlar ve option'lar
+- `docs/CLI.md` — Tüm CLI komutları ve option'lar
+- `docs/API.md` — Python API referansı (`ArchGraph` sınıfı, tüm metodlar)
+- `docs/MCP.md` — MCP server referansı (13 tool, 4 resource, cache, multi-repo)
 - `docs/DEEP_ANALYSIS.md` — CFG, data flow, taint, dil-bazlı pattern'ler
 - `docs/SECURITY.md` — Security labeling, CVE enrichment, örnek sorgular
-- `docs/AGENT.md` — rlm-agent entegrasyonu, API referansı
+- `docs/AGENT.md` — AI agent entegrasyonu, workflow örnekleri
 - `docs/ROADMAP.md` — Faz 1-4 durumu

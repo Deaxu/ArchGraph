@@ -29,7 +29,7 @@ archgraph/
 │   ├── clustering.py       # Community detection (greedy modularity)
 │   └── process.py          # Execution flow tracing from entry points
 ├── mcp/
-│   └── server.py           # MCP server — 12 tools, 4 resources, TTL cache
+│   └── server.py           # MCP server — 13 tools, 4 resources, TTL cache
 ├── server/
 │   └── web.py              # FastAPI web dashboard with interactive UI
 ├── tool/
@@ -248,7 +248,7 @@ class ExtractConfig:
     include_security_labels: bool = True
     max_file_size: int = 1_000_000
     git_max_commits: int = 10_000
-    include_clang: bool = False
+    include_clang: bool = True   # graceful skip if libclang not installed
     clang_compile_commands: Path | None = None
     clang_extra_args: list[str] = []
     include_deep: bool = True
@@ -259,6 +259,9 @@ class ExtractConfig:
     include_clustering: bool = False  # Community detection
     include_process: bool = False  # Execution flow tracing
     include_skills: bool = False  # Agent skill generation
+    include_scip: bool = True  # SCIP compiler-backed call resolution
+    include_body: bool = True  # Store source code in graph nodes
+    max_body_size: int = 51_200  # 50KB max per node, truncate beyond
 ```
 
 ## Graph Diff
