@@ -8,6 +8,8 @@ import pytest
 from archgraph.extractors.treesitter import TreeSitterExtractor
 from archgraph.graph.schema import GraphData, Node, NodeLabel, EdgeType
 
+pytestmark = pytest.mark.call_resolution
+
 
 def _ts_lang_available(lang: str) -> bool:
     try:

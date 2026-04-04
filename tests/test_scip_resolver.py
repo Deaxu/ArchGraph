@@ -7,6 +7,8 @@ import pytest
 
 from archgraph.graph.schema import GraphData, Node, NodeLabel, EdgeType
 
+pytestmark = pytest.mark.call_resolution
+
 
 # ── Task 1: Proto Import ─────────────────────────────────────────────────────
 

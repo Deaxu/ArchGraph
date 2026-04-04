@@ -118,6 +118,8 @@ def _has_edge(graph, edge_type, source_substr=None, target_substr=None):
 class TestTreeSitterC:
     """Test C language extraction."""
 
+    pytestmark = pytest.mark.lang_c
+
     def test_extract_functions(self, tmp_c_project):
         ext = TreeSitterExtractor(languages=["c"])
         graph = ext.extract(tmp_c_project)
@@ -195,6 +197,8 @@ class TestTreeSitterC:
 class TestTreeSitterRust:
     """Test Rust language extraction."""
 
+    pytestmark = pytest.mark.lang_rust
+
     def test_extract_functions(self, tmp_rust_project):
         ext = TreeSitterExtractor(languages=["rust"])
         graph = ext.extract(tmp_rust_project)
@@ -238,6 +242,8 @@ class TestTreeSitterRust:
 
 class TestTreeSitterEmpty:
     """Test edge cases."""
+
+    pytestmark = pytest.mark.core
 
     def test_empty_directory(self, tmp_path):
         ext = TreeSitterExtractor(languages=["c"])

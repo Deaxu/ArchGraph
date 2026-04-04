@@ -17,6 +17,8 @@ from archgraph.graph.schema import GraphData, NodeLabel, EdgeType
 
 
 class TestDependencyExtractor:
+    pytestmark = pytest.mark.core
+
     def test_parse_cargo_toml(self, tmp_path):
         cargo = tmp_path / "Cargo.toml"
         cargo.write_text(textwrap.dedent("""\
@@ -132,6 +134,8 @@ class TestDependencyExtractor:
 
 
 class TestAnnotationExtractor:
+    pytestmark = pytest.mark.core
+
     def test_extract_annotations(self, tmp_path):
         src = tmp_path / "test.c"
         src.write_text(textwrap.dedent("""\
@@ -181,6 +185,8 @@ class TestAnnotationExtractor:
 
 
 class TestSecurityLabeler:
+    pytestmark = pytest.mark.security
+
     def _make_func_graph(self, names: list[str]) -> GraphData:
         graph = GraphData()
         for name in names:
@@ -276,6 +282,8 @@ class TestSecurityLabeler:
 
 
 class TestGitExtractor:
+    pytestmark = pytest.mark.core
+
     def test_no_git_dir(self, tmp_path):
         ext = GitExtractor()
         graph = ext.extract(tmp_path)

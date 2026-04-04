@@ -7,45 +7,103 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    name: Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ["3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-
-      - name: Install dependencies
-        run: pip install -e ".[dev,clang]"
-
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
-
-  test-all-extras:
-    name: Test all extras
+  # ── Core: schema, config, manifest, utilities ────────────────────────
+  core:
+    name: "Core"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -m "core" -v --tb=short
 
-      - name: Install all extras
-        run: pip install -e ".[all,dev]"
+  # ── Per-language extraction tests ────────────────────────────────────
+  extraction:
+    name: "Lang: ${{ matrix.lang }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [c, rust, java, go, javascript, typescript, python]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -m "lang_${{ matrix.lang }}" -v --tb=short
 
-      - name: Run tests
-        run: pytest tests/ -v --tb=short
+  # ── Analysis features ───────────────────────────────────────────────
+  analysis:
+    name: "Analysis: ${{ matrix.feature }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        feature: [deep, call_resolution, security]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -m "${{ matrix.feature }}" -v --tb=short
 
-      - name: Check no unexpected failures
-        run: |
-          result=$(pytest tests/ -q --tb=no 2>&1 | tail -1)
-          echo "$result"
-          if echo "$result" | grep -q "failed"; then
-            exit 1
-          fi
+  # ── Interface tests ─────────────────────────────────────────────────
+  interfaces:
+    name: "Interface: ${{ matrix.iface }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        iface: [api, mcp]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -m "${{ matrix.iface }}" -v --tb=short
+
+  # ── Integration pipeline tests ──────────────────────────────────────
+  integration:
+    name: "Integration"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -m "integration" -v --tb=short
+
+  # ── Regression tests for fixed bugs ─────────────────────────────────
+  regression:
+    name: "Regression"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -m "regression" -v --tb=short
+
+  # ── Cross-platform (full suite) ─────────────────────────────────────
+  platform:
+    name: "Platform: ${{ matrix.os }} / Python ${{ matrix.python-version }}"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -v --tb=short

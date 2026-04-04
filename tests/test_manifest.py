@@ -20,6 +20,8 @@ from archgraph.manifest import (
     scan_current_files,
 )
 
+pytestmark = pytest.mark.core
+
 
 # ── Manifest I/O Tests ──────────────────────────────────────────────────────
 

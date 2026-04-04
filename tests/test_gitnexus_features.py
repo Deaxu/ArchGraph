@@ -12,6 +12,8 @@ from archgraph.graph.schema import GraphData, NodeLabel, EdgeType
 from archgraph.registry import RepoRegistry, RepoEntry
 from archgraph.search import HybridSearcher
 
+pytestmark = pytest.mark.core
+
 
 class TestClustering:
     """Tests for ClusterEnricher."""

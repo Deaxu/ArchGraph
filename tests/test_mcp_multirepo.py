@@ -5,6 +5,8 @@ import pytest
 
 from archgraph.mcp.server import ArchGraphMCP
 
+pytestmark = pytest.mark.mcp
+
 
 def _make_mcp() -> ArchGraphMCP:
     mcp = ArchGraphMCP.__new__(ArchGraphMCP)

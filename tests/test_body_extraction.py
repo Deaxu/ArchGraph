@@ -13,6 +13,8 @@ from archgraph.graph.schema import NodeLabel
 class TestBodyConfig:
     """Test include_body and max_body_size config fields."""
 
+    pytestmark = pytest.mark.core
+
     def test_include_body_default_true(self):
         config = ExtractConfig(repo_path=Path("/tmp/test"))
         assert config.include_body is True
@@ -62,6 +64,8 @@ def _ts_lang_available(lang: str) -> bool:
 
 class TestFunctionBody:
     """Test function body extraction."""
+
+    pytestmark = pytest.mark.lang_c
 
     def test_c_function_body(self, tmp_c_with_functions):
         ext = TreeSitterExtractor(languages=["c"], include_body=True)
@@ -127,6 +131,8 @@ def tmp_java_project(tmp_path):
 class TestClassShell:
     """Test class shell extraction - method bodies replaced with { ... }."""
 
+    pytestmark = pytest.mark.lang_java
+
     def test_java_class_shell(self, tmp_java_project):
         ext = TreeSitterExtractor(languages=["java"], include_body=True)
         graph = ext.extract(tmp_java_project)
@@ -187,6 +193,8 @@ def tmp_rust_with_types(tmp_path):
 class TestStructInterfaceEnumBody:
     """Test body extraction for Struct, Interface, Enum nodes."""
 
+    pytestmark = pytest.mark.lang_rust
+
     def test_rust_struct_body(self, tmp_rust_with_types):
         ext = TreeSitterExtractor(languages=["rust"], include_body=True)
         graph = ext.extract(tmp_rust_with_types)
@@ -233,6 +241,8 @@ class TestStructInterfaceEnumBody:
 class TestBodyTruncation:
     """Test body truncation when exceeding max_body_size."""
 
+    pytestmark = pytest.mark.core
+
     def test_truncation_with_small_limit(self, tmp_c_with_functions):
         ext = TreeSitterExtractor(languages=["c"], include_body=True, max_body_size=30)
         graph = ext.extract(tmp_c_with_functions)
@@ -265,6 +275,8 @@ from archgraph.graph.neo4j_store import Neo4jStore
 
 class TestNeo4jGetSource:
     """Test Neo4jStore.get_source() with mocked driver."""
+
+    pytestmark = pytest.mark.core
 
     def _make_store(self) -> Neo4jStore:
         store = Neo4jStore(uri="bolt://mock:7687")
@@ -316,6 +328,8 @@ class TestNeo4jGetSource:
 class TestMCPSourceTool:
     """Test MCP source tool definition."""
 
+    pytestmark = pytest.mark.mcp
+
     def test_source_tool_in_tools_list(self):
         from archgraph.mcp.server import TOOLS
         tool_names = [t["name"] for t in TOOLS]
@@ -333,6 +347,8 @@ class TestMCPSourceTool:
 
 class TestArchGraphToolSource:
     """Test rlm-agent tool source method."""
+
+    pytestmark = pytest.mark.api
 
     def test_source_method_exists(self):
         from archgraph.tool.archgraph_tool import ArchGraphTool
@@ -388,6 +404,8 @@ def tmp_ts_project(tmp_path):
 
 class TestMultiLanguageBody:
     """Test body extraction across multiple languages."""
+
+    pytestmark = pytest.mark.core
 
     def test_go_function_body(self, tmp_go_project):
         ext = TreeSitterExtractor(languages=["go"], include_body=True)

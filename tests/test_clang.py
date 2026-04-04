@@ -17,7 +17,7 @@ try:
 except ImportError:
     HAS_CLANG = False
 
-pytestmark = pytest.mark.skipif(not HAS_CLANG, reason="libclang not installed")
+pytestmark = [pytest.mark.skipif(not HAS_CLANG, reason="libclang not installed"), pytest.mark.lang_c, pytest.mark.deep]
 
 from archgraph.extractors.clang import ClangExtractor  # noqa: E402
 

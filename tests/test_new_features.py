@@ -18,6 +18,8 @@ from archgraph.mcp.server import _ToolCache
 class TestAutoDetect:
     """Tests for language auto-detection."""
 
+    pytestmark = pytest.mark.core
+
     def test_detect_c_repo(self, tmp_path: Path):
         """Should detect C files."""
         (tmp_path / "main.c").write_text("int main() { return 0; }")
@@ -48,6 +50,8 @@ class TestAutoDetect:
 
 class TestRiskScore:
     """Tests for risk score calculation."""
+
+    pytestmark = pytest.mark.security
 
     def test_risk_score_input_and_sink(self):
         """Input source + dangerous sink should have high risk."""
@@ -114,6 +118,8 @@ class TestRiskScore:
 class TestExport:
     """Tests for export formats."""
 
+    pytestmark = pytest.mark.core
+
     def test_export_json(self, tmp_path: Path):
         """Should export valid JSON."""
         graph = GraphData()
@@ -165,6 +171,8 @@ class TestExport:
 
 class TestMcpCache:
     """Tests for MCP tool cache."""
+
+    pytestmark = pytest.mark.mcp
 
     def test_cache_set_and_get(self):
         """Should cache and retrieve values."""

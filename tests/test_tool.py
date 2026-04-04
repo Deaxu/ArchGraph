@@ -1,6 +1,10 @@
 """Tests for the ArchGraphTool (without requiring Neo4j)."""
 
+import pytest
+
 from archgraph.tool.archgraph_tool import ArchGraphTool
+
+pytestmark = pytest.mark.api
 
 
 def test_tool_properties():

@@ -95,6 +95,8 @@ def sample_c_project(tmp_path):
     return tmp_path
 
 
+@pytest.mark.integration
+@pytest.mark.lang_c
 def test_full_pipeline(sample_c_project):
     """Integration test: full extraction pipeline without Neo4j."""
     config = ExtractConfig(
@@ -170,6 +172,9 @@ def test_full_pipeline(sample_c_project):
     assert len(stats["edges"]) > 0
 
 
+@pytest.mark.integration
+@pytest.mark.lang_c
+@pytest.mark.call_resolution
 def test_pipeline_scip_c(tmp_path):
     """Integration test: C call resolution (SCIP when available, heuristic fallback)."""
     # Minimal compilable C project (no external deps)
@@ -229,6 +234,9 @@ def test_pipeline_scip_c(tmp_path):
     assert "add" in target_names or "multiply" in target_names
 
 
+@pytest.mark.integration
+@pytest.mark.lang_c
+@pytest.mark.deep
 def test_pipeline_with_clang(sample_c_project):
     """Integration test: pipeline with clang deep analysis enabled."""
     try:
@@ -266,6 +274,8 @@ def test_pipeline_with_clang(sample_c_project):
     assert len(bb_contains) > 0
 
 
+@pytest.mark.integration
+@pytest.mark.deep
 def test_pipeline_with_deep(tmp_path):
     """Integration test: pipeline with tree-sitter deep analysis enabled."""
     (tmp_path / "lib.rs").write_text(textwrap.dedent("""\
@@ -307,6 +317,7 @@ def test_pipeline_with_deep(tmp_path):
     assert len(bb_contains) > 0
 
 
+@pytest.mark.integration
 def test_pipeline_without_git(tmp_path):
     """Test pipeline with git disabled."""
     (tmp_path / "test.c").write_text("int main() { return 0; }\n")
@@ -329,6 +340,8 @@ def test_pipeline_without_git(tmp_path):
     assert len(file_nodes) == 1
 
 
+@pytest.mark.integration
+@pytest.mark.lang_c
 def test_pipeline_parallel(sample_c_project):
     """Parallel and sequential pipelines should produce equivalent results."""
     base_kwargs = dict(
@@ -362,6 +375,7 @@ def test_pipeline_parallel(sample_c_project):
 # ── Incremental Extraction Tests ─────────────────────────────────────────────
 
 
+@pytest.mark.integration
 def test_incremental_no_manifest_fallback(sample_c_project):
     """Incremental with no prior manifest should fall back to full build and create manifest."""
     # Ensure no manifest exists
@@ -391,6 +405,7 @@ def test_incremental_no_manifest_fallback(sample_c_project):
     assert len(manifest.files) > 0
 
 
+@pytest.mark.integration
 def test_incremental_modified_file(sample_c_project):
     """After full build + modifying a file, incremental should only re-extract changed files."""
     # First: full build to create manifest
@@ -438,6 +453,7 @@ def test_incremental_modified_file(sample_c_project):
     assert len(updated_manifest.files) == old_file_count
 
 
+@pytest.mark.integration
 def test_incremental_deleted_file(sample_c_project):
     """After full build + deleting a file, incremental should detect the deletion."""
     # First: full build

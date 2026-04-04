@@ -78,6 +78,8 @@ def _parse_and_find_func(parser, spec, source_text: str):
 class TestDeepRustCFG:
     """CFG construction tests for Rust."""
 
+    pytestmark = [pytest.mark.lang_rust, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("rust")
 
@@ -139,6 +141,8 @@ class TestDeepRustCFG:
 class TestDeepRustDataFlow:
     """Data flow tests for Rust."""
 
+    pytestmark = [pytest.mark.lang_rust, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("rust")
 
@@ -185,6 +189,8 @@ class TestDeepRustDataFlow:
 class TestDeepRustTaint:
     """Taint tracking tests for Rust."""
 
+    pytestmark = [pytest.mark.lang_rust, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("rust")
 
@@ -226,6 +232,8 @@ class TestDeepRustTaint:
 
 class TestDeepRustPatterns:
     """Rust-specific pattern detection tests."""
+
+    pytestmark = [pytest.mark.lang_rust, pytest.mark.deep]
 
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("rust")
@@ -277,6 +285,8 @@ class TestDeepRustPatterns:
 class TestDeepJavaCFG:
     """CFG construction tests for Java."""
 
+    pytestmark = [pytest.mark.lang_java, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("java")
 
@@ -318,6 +328,8 @@ class TestDeepJavaCFG:
 
 class TestDeepJavaPatterns:
     """Java-specific pattern detection tests."""
+
+    pytestmark = [pytest.mark.lang_java, pytest.mark.deep]
 
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("java")
@@ -362,6 +374,8 @@ class TestDeepJavaPatterns:
 class TestDeepGoCFG:
     """CFG construction tests for Go."""
 
+    pytestmark = [pytest.mark.lang_go, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("go")
 
@@ -404,6 +418,8 @@ class TestDeepGoCFG:
 
 class TestDeepGoPatterns:
     """Go-specific pattern detection tests."""
+
+    pytestmark = [pytest.mark.lang_go, pytest.mark.deep]
 
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("go")
@@ -464,6 +480,8 @@ class TestDeepGoPatterns:
 class TestDeepKotlinPatterns:
     """Kotlin-specific pattern detection tests (skipped if grammar not installed)."""
 
+    pytestmark = [pytest.mark.lang_kotlin, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("kotlin")
 
@@ -503,6 +521,8 @@ class TestDeepKotlinPatterns:
 
 class TestDeepSwiftPatterns:
     """Swift-specific pattern detection tests (skipped if grammar not installed)."""
+
+    pytestmark = [pytest.mark.lang_swift, pytest.mark.deep]
 
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("swift")
@@ -544,6 +564,8 @@ class TestDeepSwiftPatterns:
 class TestDeepEdgeCases:
     """Edge case tests for deep analysis."""
 
+    pytestmark = pytest.mark.deep
+
     def test_empty_dir(self, tmp_path):
         """Empty directory should return empty graph."""
         from archgraph.extractors.deep import TreeSitterDeepExtractor
@@ -578,6 +600,8 @@ class TestDeepEdgeCases:
 
 class TestDeepExtractorIntegration:
     """Integration tests using TreeSitterDeepExtractor on real files."""
+
+    pytestmark = [pytest.mark.deep, pytest.mark.integration]
 
     def test_rust_full_extract(self, tmp_path):
         """Full extraction on a Rust file should produce CFG + data flow."""
@@ -676,6 +700,8 @@ class TestDeepExtractorIntegration:
 class TestDeepJavaScriptCFG:
     """CFG construction tests for JavaScript."""
 
+    pytestmark = [pytest.mark.lang_javascript, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("javascript")
 
@@ -733,6 +759,8 @@ class TestDeepJavaScriptCFG:
 class TestDeepJavaScriptDataFlow:
     """Data flow tests for JavaScript."""
 
+    pytestmark = [pytest.mark.lang_javascript, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("javascript")
 
@@ -761,6 +789,8 @@ class TestDeepJavaScriptDataFlow:
 class TestDeepJavaScriptPatterns:
     """JavaScript-specific pattern detection tests."""
 
+    pytestmark = [pytest.mark.lang_javascript, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("javascript")
 
@@ -784,6 +814,8 @@ class TestDeepJavaScriptPatterns:
 
 class TestDeepTypeScriptCFG:
     """CFG construction tests for TypeScript."""
+
+    pytestmark = [pytest.mark.lang_typescript, pytest.mark.deep]
 
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("typescript")
@@ -820,6 +852,8 @@ class TestDeepTypeScriptCFG:
 class TestDeepTypeScriptPatterns:
     """TypeScript-specific pattern detection tests."""
 
+    pytestmark = [pytest.mark.lang_typescript, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("typescript")
 
@@ -855,6 +889,8 @@ class TestDeepTypeScriptPatterns:
 
 class TestDeepPythonCFG:
     """CFG construction tests for Python."""
+
+    pytestmark = [pytest.mark.lang_python, pytest.mark.deep]
 
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("python")
@@ -902,6 +938,8 @@ class TestDeepPythonCFG:
 class TestDeepPythonDataFlow:
     """Data flow tests for Python."""
 
+    pytestmark = [pytest.mark.lang_python, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("python")
 
@@ -934,6 +972,8 @@ class TestDeepPythonPatterns:
     purposes — the patterns are not executed.
     """
 
+    pytestmark = [pytest.mark.lang_python, pytest.mark.deep]
+
     def setup_method(self):
         self.parser, self.spec = _try_import_lang("python")
 
@@ -957,6 +997,8 @@ class TestDeepPythonPatterns:
 
 class TestDeepNewLangIntegration:
     """Integration tests for newly added deep analysis languages."""
+
+    pytestmark = [pytest.mark.deep, pytest.mark.integration]
 
     def test_js_full_extract(self, tmp_path):
         """Full extraction on a JavaScript file should produce CFG + data flow."""

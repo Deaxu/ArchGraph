@@ -7,6 +7,8 @@ import pytest
 from archgraph.graph.neo4j_store import Neo4jStore
 from archgraph.graph.schema import GraphData, Node
 
+pytestmark = pytest.mark.core
+
 
 class TestApocDetection:
     """Test APOC auto-detection logic using mocked Neo4j sessions."""

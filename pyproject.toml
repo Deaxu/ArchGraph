@@ -83,3 +83,23 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "core: Core schema, config, manifest, and utility tests",
+    "lang_c: C language extraction and analysis",
+    "lang_cpp: C++ language extraction and analysis",
+    "lang_rust: Rust language extraction and analysis",
+    "lang_java: Java language extraction and analysis",
+    "lang_go: Go language extraction and analysis",
+    "lang_javascript: JavaScript language extraction and analysis",
+    "lang_typescript: TypeScript language extraction and analysis",
+    "lang_python: Python language extraction and analysis",
+    "lang_kotlin: Kotlin language extraction and analysis",
+    "lang_swift: Swift language extraction and analysis",
+    "deep: Deep analysis — CFG, data flow, taint tracking",
+    "call_resolution: Call resolution — SCIP and heuristic",
+    "security: Security labeling, CVE enrichment, risk scoring",
+    "api: Python API interface tests",
+    "mcp: MCP server interface tests",
+    "regression: Regression tests for fixed bugs",
+    "integration: End-to-end pipeline tests",
+]

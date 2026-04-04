@@ -1,6 +1,10 @@
 """Tests for graph schema data structures."""
 
+import pytest
+
 from archgraph.graph.schema import Node, Edge, GraphData, NodeLabel, EdgeType, GraphDiff, NodeChange
+
+pytestmark = pytest.mark.core
 
 
 def test_node_creation():

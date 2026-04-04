@@ -8,6 +8,8 @@ import pytest
 from archgraph.enrichment.cve import CveEnricher, _clean_version
 from archgraph.graph.schema import GraphData, NodeLabel, EdgeType
 
+pytestmark = pytest.mark.security
+
 
 def _make_dep_graph(deps: list[dict]) -> GraphData:
     """Helper: create a GraphData with Dependency nodes."""
