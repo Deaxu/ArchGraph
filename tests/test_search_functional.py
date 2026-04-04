@@ -60,16 +60,13 @@ class TestTokenizer:
     def test_camelcase_lowered_before_split(self):
         """The tokenizer lowercases text before regex extraction.
 
-        This means camelCase splitting does not work as one might expect:
-        'parseData' becomes 'parsedata' (a single token) because the text
-        is lowered before the [A-Z][a-z]* pattern can match uppercase chars.
-        This test documents the actual behavior.
+        camelCase splitting should work: 'parseData' should produce
+        both the full token 'parsedata' AND the sub-parts 'parse', 'data'.
         """
         tokens = self._tokenize("parseData")
-        # After lowering, it's 'parsedata' — no uppercase left to split on
         assert "parsedata" in tokens
-        # The camelCase sub-parts are NOT extracted due to pre-lowering
-        assert tokens.count("parse") == 0  # not split
+        assert "parse" in tokens
+        assert "data" in tokens
 
 
 class TestBM25Search:

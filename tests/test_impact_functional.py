@@ -267,16 +267,16 @@ class TestAnalyzeImpact:
             ],
         })
         result = analyzer.analyze_impact("func:a.c:main:1", direction="downstream")
-        # No 'properties' key in query results → flags are always empty
+        # No security properties on the result → flags should be empty
         assert result["security_flags"] == []
 
-    def test_security_flags_with_properties_key(self):
-        """If result has 'properties' with security fields, flags should be populated."""
+    def test_security_flags_from_flat_properties(self):
+        """Security flags should be detected from flat query result properties."""
         analyzer = _make_analyzer({
             "CALLS*": [
                 {"id": "func:b.c:recv:5", "name": "recv", "file": "b.c",
                  "depth": 1, "sources": ["scip"],
-                 "properties": {"is_input_source": True}},
+                 "is_input_source": True},
             ],
         })
         result = analyzer.analyze_impact("func:a.c:main:1", direction="downstream")

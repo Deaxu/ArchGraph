@@ -137,14 +137,18 @@ class HybridSearcher:
 
     def _tokenize(self, text: str) -> list[str]:
         """Tokenize text into searchable tokens."""
-        # Split on non-alphanumeric, keep camelCase parts
-        tokens = re.findall(r"[a-z0-9]+", text.lower())
-        # Add camelCase splits
-        expanded = []
-        for token in tokens:
-            expanded.append(token)
-            # Split camelCase: "parseData" -> ["parse", "data"]
-            parts = re.findall(r"[a-z]+|[A-Z][a-z]*", token)
+        # Split camelCase BEFORE lowercasing so [A-Z] regex works
+        # e.g. "parseData" -> ["parse", "Data"] -> ["parse", "data"]
+        camel_parts = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)|[0-9]+", text)
+        # Also split on non-alphanumeric boundaries
+        raw_tokens = re.findall(r"[a-zA-Z0-9]+", text)
+        # Combine: full tokens (lowered) + camelCase sub-parts (lowered)
+        expanded: list[str] = []
+        for token in raw_tokens:
+            lower = token.lower()
+            expanded.append(lower)
+            # Split camelCase parts from the original (not lowered) token
+            parts = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)|[0-9]+", token)
             if len(parts) > 1:
                 expanded.extend(p.lower() for p in parts if len(p) > 1)
         return expanded

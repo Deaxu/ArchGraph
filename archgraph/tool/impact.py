@@ -56,7 +56,10 @@ class ImpactAnalyzer:
                 "WITH caller, length(path) AS depth, "
                 "[r IN relationships(path) | coalesce(r.source, 'unknown')] AS sources "
                 "RETURN caller._id AS id, caller.name AS name, "
-                "caller.file AS file, depth, sources "
+                "caller.file AS file, depth, sources, "
+                "caller.is_input_source AS is_input_source, "
+                "caller.is_dangerous_sink AS is_dangerous_sink, "
+                "caller.is_crypto AS is_crypto "
                 "ORDER BY depth, caller.name"
             ).format(depth=max_depth)
             callers_params: dict[str, Any] = {"id": symbol_id}
@@ -75,7 +78,10 @@ class ImpactAnalyzer:
                 "WITH callee, length(path) AS depth, "
                 "[r IN relationships(path) | coalesce(r.source, 'unknown')] AS sources "
                 "RETURN callee._id AS id, callee.name AS name, "
-                "callee.file AS file, depth, sources "
+                "callee.file AS file, depth, sources, "
+                "callee.is_input_source AS is_input_source, "
+                "callee.is_dangerous_sink AS is_dangerous_sink, "
+                "callee.is_crypto AS is_crypto "
                 "ORDER BY depth, callee.name"
             ).format(depth=max_depth)
             callees_params: dict[str, Any] = {"id": symbol_id}
@@ -225,13 +231,13 @@ class ImpactAnalyzer:
         """Check if any affected functions are security-sensitive."""
         flags: list[str] = []
         for r in results:
-            props = r.get("properties", {})
-            if props.get("is_input_source"):
-                flags.append(f"input_source:{r.get('_id', r.get('id', ''))}")
-            if props.get("is_dangerous_sink"):
-                flags.append(f"dangerous_sink:{r.get('_id', r.get('id', ''))}")
-            if props.get("is_crypto"):
-                flags.append(f"crypto:{r.get('_id', r.get('id', ''))}")
+            node_id = r.get("id", "")
+            if r.get("is_input_source"):
+                flags.append(f"input_source:{node_id}")
+            if r.get("is_dangerous_sink"):
+                flags.append(f"dangerous_sink:{node_id}")
+            if r.get("is_crypto"):
+                flags.append(f"crypto:{node_id}")
         return flags
 
     def _assess_risk(
