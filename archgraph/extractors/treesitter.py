@@ -290,7 +290,7 @@ class TreeSitterExtractor(BaseExtractor):
         graph = GraphData()
         try:
             source = file_path.read_bytes()
-            rel_path = str(file_path.relative_to(repo_path))
+            rel_path = str(file_path.relative_to(repo_path)).replace("\\", "/")
             parser = self._get_thread_parser(lang)
             tree = parser.parse(source)
             root = tree.root_node
@@ -331,7 +331,7 @@ class TreeSitterExtractor(BaseExtractor):
                 if fpath.suffix not in EXTENSION_MAP:
                     continue
                 if changed_files is not None:
-                    rel = str(fpath.relative_to(repo_path))
+                    rel = str(fpath.relative_to(repo_path)).replace("\\", "/")
                     if rel not in changed_files:
                         continue
                 files.append(fpath)
@@ -350,7 +350,7 @@ class TreeSitterExtractor(BaseExtractor):
     ) -> None:
         """Parse a single file and add its nodes/edges to the graph."""
         source = file_path.read_bytes()
-        rel_path = str(file_path.relative_to(repo_path))
+        rel_path = str(file_path.relative_to(repo_path)).replace("\\", "/")
 
         # Parse
         parser = self._parsers[lang]

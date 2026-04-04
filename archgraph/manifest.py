@@ -157,7 +157,7 @@ def scan_current_files(repo_path: Path) -> dict[str, FileEntry]:
             if lang is None:
                 continue
 
-            rel = str(fpath.relative_to(repo_path))
+            rel = str(fpath.relative_to(repo_path)).replace("\\", "/")
             try:
                 size = fpath.stat().st_size
                 fhash = _file_sha256(fpath)

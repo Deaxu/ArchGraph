@@ -260,7 +260,9 @@ class ClangExtractor(BaseExtractor):
             logger.debug("Failed to parse %s", fpath)
             return
 
-        rel_path = str(fpath.relative_to(repo)) if fpath.is_relative_to(repo) else str(fpath)
+        rel_path = (
+            str(fpath.relative_to(repo)) if fpath.is_relative_to(repo) else str(fpath)
+        ).replace("\\", "/")
 
         # Walk the AST
         for cursor in tu.cursor.get_children():

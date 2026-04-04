@@ -340,7 +340,7 @@ class ArchGraph:
 
     def source(self, symbol_id: str) -> dict[str, Any] | None:
         """Get source code of a symbol."""
-        return self._get_store().get_source(symbol_id)
+        return self._get_store().get_source(symbol_id.replace("\\", "/"))
 
     # ── Repos ─────────────────────────────────────────────────────────────
 
@@ -358,6 +358,7 @@ class ArchGraph:
         self, symbol_id: str, direction: str = "downstream", max_depth: int = 5,
     ) -> dict[str, Any]:
         """Analyze blast radius of a function."""
+        symbol_id = symbol_id.replace("\\", "/")
         from archgraph.tool.impact import ImpactAnalyzer
         analyzer = ImpactAnalyzer(self._get_store())
         return analyzer.analyze_impact(symbol_id, direction, max_depth)
@@ -366,6 +367,7 @@ class ArchGraph:
 
     def context(self, symbol_id: str) -> dict[str, Any]:
         """Get 360-degree view of a symbol — properties, callers, callees, cluster, security labels."""
+        symbol_id = symbol_id.replace("\\", "/")
         store = self._get_store()
         symbol = store.query(
             "MATCH (n:_Node {_id: $id}) RETURN properties(n) AS props",

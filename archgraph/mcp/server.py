@@ -405,7 +405,7 @@ class ArchGraphMCP:
 
             elif name == "impact":
                 repo = self._require_repo()
-                symbol_id = arguments["symbol_id"]
+                symbol_id = arguments["symbol_id"].replace("\\", "/")
                 check = self._store.query(
                     "MATCH (n:_Node {_id: $id, repo: $repo}) RETURN n._id LIMIT 1",
                     {"id": symbol_id, "repo": repo},
@@ -419,7 +419,7 @@ class ArchGraphMCP:
 
             elif name == "context":
                 repo = self._require_repo()
-                result = self._get_context(arguments["symbol_id"], repo=repo)
+                result = self._get_context(arguments["symbol_id"].replace("\\", "/"), repo=repo)
 
             elif name == "detect_changes":
                 repo = self._require_repo()
@@ -435,7 +435,7 @@ class ArchGraphMCP:
 
             elif name == "source":
                 repo = self._require_repo()
-                symbol_id = arguments["symbol_id"]
+                symbol_id = arguments["symbol_id"].replace("\\", "/")
                 source_result = self._store.get_source(symbol_id, repo=repo)
                 if source_result:
                     result = source_result

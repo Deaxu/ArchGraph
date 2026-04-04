@@ -425,6 +425,7 @@ class Neo4jStore:
 
     def get_source(self, symbol_id: str, repo: str | None = None) -> dict[str, Any] | None:
         """Get source code for a symbol by its node ID."""
+        symbol_id = symbol_id.replace("\\", "/")
         repo_clause = " AND n.repo = $repo" if repo else ""
         params: dict[str, Any] = {"id": symbol_id}
         if repo:

@@ -155,7 +155,7 @@ class TreeSitterDeepExtractor(BaseExtractor):
             source = fpath.read_bytes()
             rel_path = (
                 str(fpath.relative_to(repo)) if fpath.is_relative_to(repo) else str(fpath)
-            )
+            ).replace("\\", "/")
             parser = self._get_thread_parser(lang)
             spec = self._specs[lang]
             tree = parser.parse(source)
@@ -190,7 +190,9 @@ class TreeSitterDeepExtractor(BaseExtractor):
     ) -> None:
         """Parse and analyze a single file."""
         source = fpath.read_bytes()
-        rel_path = str(fpath.relative_to(repo)) if fpath.is_relative_to(repo) else str(fpath)
+        rel_path = (
+            str(fpath.relative_to(repo)) if fpath.is_relative_to(repo) else str(fpath)
+        ).replace("\\", "/")
         parser = self._parsers[lang]
         spec = self._specs[lang]
 

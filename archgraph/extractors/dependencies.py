@@ -49,12 +49,13 @@ class DependencyExtractor(BaseExtractor):
 
         for manifest, filename, method_name in manifests:
             try:
-                rel = manifest.relative_to(repo_path)
+                rel = str(manifest.relative_to(repo_path)).replace("\\", "/")
                 method = getattr(self, method_name)
                 deps = method(manifest)
-                module_name = str(rel.parent) if str(rel.parent) != "." else filename
+                rel_parent = rel.rsplit("/", 1)[0] if "/" in rel else "."
+                module_name = rel_parent if rel_parent != "." else filename
                 module_id = f"module:{module_name}"
-                graph.add_node(module_id, NodeLabel.MODULE, name=module_name, path=str(rel))
+                graph.add_node(module_id, NodeLabel.MODULE, name=module_name, path=rel)
 
                 for dep in deps:
                     dep_id = f"dep:{dep['name']}"

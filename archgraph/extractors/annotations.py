@@ -47,7 +47,7 @@ class AnnotationExtractor(BaseExtractor):
         except OSError:
             return
 
-        rel_path = str(file_path.relative_to(repo_path))
+        rel_path = str(file_path.relative_to(repo_path)).replace("\\", "/")
         file_id = f"file:{rel_path}"
 
         for line_num, line in enumerate(text.splitlines(), start=1):
